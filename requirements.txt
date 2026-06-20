@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+numpy
+scipy
+osmnx
+networkx
+folium
+qiskit
+qiskit-ibm-runtime
+ortools
