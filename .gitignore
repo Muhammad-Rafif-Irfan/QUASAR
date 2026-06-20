@@ -4,4 +4,4 @@ __pycache__/
 quasar.db
 cache/
 static/
-.env
+.env*
