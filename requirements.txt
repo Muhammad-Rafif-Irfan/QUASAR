@@ -6,6 +6,7 @@ numpy
 scipy
 osmnx
 networkx
+haversine
 folium
 qiskit
 qiskit-ibm-runtime
