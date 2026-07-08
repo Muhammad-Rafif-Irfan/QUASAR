@@ -66,11 +66,11 @@ QUASAR/
 │       ├── __init__.py
 │       ├── quantum_driver.py    # Qiskit QAOA / QAI-HOBO loops & OR-Tools solver
 │       └── routing.py           # OSMnx snapping, distance matrix, and Folium maps
-├── core/                        # Team's standalone mathematical solver modules
-│   ├── base_solver.py           # Core base solver classes
-│   └── solver_qai_hobo.py       # Standalone QAI + HOBO solver logic
+├── core/                        # Core quantum algorithm (wired into FastAPI pipeline)
+│   ├── base_solver.py           # BaseQuantumSolver ABC + tour validation
+│   └── solver_qai_hobo.py       # QAI + HOBO solver used by quantum_driver
 ├── services/
-│   └── classical_solver.py      # Standalone OR-Tools solver logic
+│   └── classical_solver.py      # ORToolsSolver warm-start used by quantum_driver
 ├── requirements.txt             # Project requirements
 ├── test_quasar.py               # Complete test verification suite
 └── README.md                    # Project documentation

@@ -23,15 +23,15 @@ class BaseQuantumSolver(ABC):
         if len(tour) != self.num_nodes + 1:
             return False
             
-       # Rule 2: Must start and return to the Depot (node 0)
+        # Rule 2: Must start and return to the Depot (node 0)
         if tour[0] != 0 or tour[-1] != 0:
             return False
-            
+
         # Rule 3: Must visit every city exactly once
         middle_stops = tour[1:-1]
         if len(set(middle_stops)) != self.num_nodes - 1:
             return False
-            
+
         return True
 
     def calculate_distance(self, tour):

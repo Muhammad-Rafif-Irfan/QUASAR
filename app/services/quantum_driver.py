@@ -13,9 +13,13 @@ from app.database import SessionLocal
 from app.models import BenchmarkRun, QuantumJob, BenchmarkResult
 from app.services.routing import calculate_distance_matrix, render_map
 
-# OR-Tools
+# Core algorithm modules (wired from Team Tech Lead — Quantum / Classical)
+from core.solver_qai_hobo import QaiHoboSolver
+from services.classical_solver import ORToolsSolver
+
+# OR-Tools availability flag (solver lives in services.classical_solver)
 try:
-    from ortools.constraint_solver import routing_enums_pb2, pywrapcp
+    import ortools  # noqa: F401
     OR_TOOLS_AVAILABLE = True
 except ImportError:
     OR_TOOLS_AVAILABLE = False
@@ -115,46 +119,23 @@ def solve_greedy_tsp(dist_matrix: np.ndarray) -> list[int]:
 
 def solve_or_tools(dist_matrix: np.ndarray) -> tuple[list[int], float, float]:
     """
-    Solves the TSP using Google OR-Tools.
+    Solves the TSP using the shared ORToolsSolver (services.classical_solver).
     Returns (tour, distance, wall_clock_ms).
     """
-    n = len(dist_matrix)
     if not OR_TOOLS_AVAILABLE:
-        # Greedy fallback
         t0 = time.time()
         tour = solve_greedy_tsp(dist_matrix)
         t_ms = (time.time() - t0) * 1000.0
         dist = tour_distance(tour, dist_matrix)
         return tour, dist, t_ms
 
-    manager = pywrapcp.RoutingIndexManager(n, 1, 0)
-    routing = pywrapcp.RoutingModel(manager)
-    
-    def distance_callback(from_index, to_index):
-        return dist_matrix[manager.IndexToNode(from_index)][manager.IndexToNode(to_index)]
-        
-    transit_callback_index = routing.RegisterTransitCallback(distance_callback)
-    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
-    
-    params = pywrapcp.DefaultRoutingSearchParameters()
-    params.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-    params.time_limit.seconds = 3
-    
-    t0 = time.time()
-    assignment = routing.SolveWithParameters(params)
-    t_ms = (time.time() - t0) * 1000.0
-    
-    ort_tour = []
-    if assignment:
-        idx = routing.Start(0)
-        while not routing.IsEnd(idx):
-            ort_tour.append(manager.IndexToNode(idx))
-            idx = assignment.Value(routing.NextVar(idx))
-        ort_tour.append(manager.IndexToNode(idx))
-    else:
+    solver = ORToolsSolver(dist_matrix)
+    ort_tour, dist, t_ms = solver.solve()
+    if not ort_tour:
+        t0 = time.time()
         ort_tour = solve_greedy_tsp(dist_matrix)
-        
-    dist = tour_distance(ort_tour, dist_matrix)
+        t_ms = (time.time() - t0) * 1000.0
+        dist = tour_distance(ort_tour, dist_matrix)
     return ort_tour, dist, t_ms
 
 
@@ -255,105 +236,48 @@ def solve_qaoa(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool
 
 def solve_qai_hobo(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool, ort_tour: list[int], run_id: str, db) -> tuple[list[int], float, float]:
     """
-    Executes Closed-Loop QAI+HOBO on the backend (3 temperatures: 0.8, 0.4, 0.1).
+    Executes QAI+HOBO via the shared core.QaiHoboSolver (3 temperatures: 0.8, 0.4, 0.1).
+    Persists QuantumJob rows through the solver job_callback.
     """
-    n = len(dist_matrix)
-    B = max(1, int(np.ceil(np.log2(n))))
-    qai_best_tour = []
-    qai_best_dist = float('inf')
-    qai_total_qpu_time = 0.0
+    backend_name = "Local Statevector Simulator" if is_simulator else backend.name
+    active_jobs: dict = {}
 
-    def hobo_decode(bitstring):
-        bits = list(reversed(bitstring))
-        pos = {c: sum(int(bits[c*B + b]) * (2**b) for b in range(B) if c*B+b < len(bits)) % n for c in range(n)}
-        ordered = [None] * n
-        for c, p in sorted(pos.items(), key=lambda item: item[1]):
-            if ordered[p] is None: ordered[p] = c
-            else:
-                empty = [i for i in range(n) if ordered[i] is None]
-                if empty: ordered[empty[0]] = c
-        ordered = [c for c in ordered if c is not None]
-        if 0 in ordered: ordered.remove(0)
-        return [0] + ordered + [0]
-
-    def build_qai(temp):
-        qc = QuantumCircuit(n * B)
-        qc.h(range(n * B))
-        for seq, city in enumerate(ort_tour[:-1]):
-            pos_ratio = seq / max(n - 1, 1)
-            for b in range(B): qc.rz(pos_ratio * np.pi * (b + 1) / B, city * B + b)
-        gamma = (1.0 - temp) * np.pi * 0.5 + 0.1
-        qc.rx(temp * np.pi, range(n * B))
-        for i in range((n * B)-1):
-            qc.cx(i, i+1)
-            qc.rz(gamma, i+1)
-            qc.cx(i, i+1)
-        qc.measure_all()
-        return qc
-
-    suhu_list = [0.8, 0.4, 0.1]
-    for i, temp in enumerate(suhu_list):
-        qc = build_qai(temp)
-        backend_name = "Local Statevector Simulator" if is_simulator else backend.name
-        job_id_placeholder = f"sim-qai-{i+1}-{uuid.uuid4().hex[:8]}" if is_simulator else "PENDING"
-        
-        q_job = QuantumJob(
-            run_id=run_id,
-            job_id=job_id_placeholder,
-            algorithm=f"QAI-HOBO-Temp-{temp}",
-            backend_name=backend_name,
-            status="SUBMITTED",
-            qpu_time_seconds=0.0
-        )
-        db.add(q_job)
-        db.commit()
-        
-        try:
-            if is_simulator:
-                job = sampler.run([qc])
-            else:
-                isa_qc = pm.run(qc)
-                job = sampler.run([isa_qc])
-                q_job.job_id = job.job_id()
+    def job_callback(event: str, payload: dict):
+        if event == "job_start":
+            q_job = QuantumJob(
+                run_id=run_id,
+                job_id=payload["job_id"],
+                algorithm=payload["algorithm"],
+                backend_name=payload["backend_name"],
+                status="SUBMITTED",
+                qpu_time_seconds=0.0,
+            )
+            db.add(q_job)
+            db.commit()
+            active_jobs[payload["algorithm"]] = q_job
+        elif event == "job_complete":
+            q_job = active_jobs.get(payload["algorithm"])
+            if q_job:
+                q_job.job_id = payload.get("job_id", q_job.job_id)
+                q_job.status = "COMPLETED"
+                q_job.qpu_time_seconds = float(payload.get("qpu_time_seconds", 0.0))
                 db.commit()
-                
-            result = job.result()
-            
-            quantum_seconds = 0.0
-            if not is_simulator:
-                try:
-                    quantum_seconds = job.metrics().get("usage", {}).get("quantum_seconds", 0.0)
-                except Exception:
-                    pass
-            qai_total_qpu_time += quantum_seconds
-            
-            q_job.status = "COMPLETED"
-            q_job.qpu_time_seconds = quantum_seconds
-            db.commit()
-            
-            data = result[0].data
-            counts = None
-            for attr_name in dir(data):
-                attr = getattr(data, attr_name, None)
-                if attr and hasattr(attr, 'get_counts'):
-                    counts = attr.get_counts()
-                    break
-            if counts is None:
-                counts = data.meas.get_counts()
-                
-            bits = max(counts, key=counts.get)
-            tour = hobo_decode(bits)
-            d = tour_distance(tour, dist_matrix)
-            
-            if d < qai_best_dist:
-                qai_best_dist = d
-                qai_best_tour = tour
-        except Exception as e:
-            q_job.status = "FAILED"
-            db.commit()
-            raise e
+        elif event == "job_failed":
+            q_job = active_jobs.get(payload["algorithm"])
+            if q_job:
+                q_job.status = "FAILED"
+                db.commit()
 
-    return qai_best_tour, qai_best_dist, qai_total_qpu_time
+    solver = QaiHoboSolver(
+        distance_matrix=dist_matrix,
+        sampler=sampler,
+        pass_manager=pm,
+        is_simulator=is_simulator,
+        job_callback=job_callback,
+        backend_name=backend_name,
+    )
+    outcome = solver.solve(warm_start_route=ort_tour)
+    return outcome["best_tour"], outcome["best_distance"], outcome["qpu_seconds"]
 
 
 def run_optimization_pipeline(run_id: str, depot: dict, stops: list[dict]):
