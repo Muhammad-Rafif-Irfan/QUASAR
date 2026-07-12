@@ -1,0 +1,49 @@
+# =============================================================================
+# QUASAR — Docker Build Ignore
+# Excludes files not needed in the container image.
+# =============================================================================
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Database & Runtime artifacts
+quasar.db
+*.db
+cache/
+static/maps/
+
+# Environment & Secrets
+.env
+.env.*
+
+# Version Control
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation (not needed at runtime)
+README.md
+note.txt
+
+# Tests (not needed in production image)
+test_*.py
+tests/
+
+# CI/CD
+.github/

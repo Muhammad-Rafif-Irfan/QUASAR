@@ -59,9 +59,14 @@ QUASAR/
 ├── app/
 │   ├── __init__.py
 │   ├── database.py              # SQLAlchemy database engine and session
-│   ├── main.py                  # FastAPI controllers and routes
+│   ├── main.py                  # FastAPI controllers, routes & middleware wiring
 │   ├── models.py                # Database tracing tables
 │   ├── schemas.py               # Pydantic validation schemas
+│   ├── middleware/              # Security & Observability middleware stack
+│   │   ├── __init__.py
+│   │   ├── security.py          # OWASP headers, request size limit, error sanitization
+│   │   ├── rate_limiter.py      # Sliding window rate limiter (per-endpoint burst control)
+│   │   └── observability.py     # Structured logging, correlation ID, perf monitoring
 │   └── services/
 │       ├── __init__.py
 │       ├── quantum_driver.py    # Qiskit QAOA / QAI-HOBO loops & OR-Tools solver
@@ -71,9 +76,126 @@ QUASAR/
 │   └── solver_qai_hobo.py       # QAI + HOBO solver used by quantum_driver
 ├── services/
 │   └── classical_solver.py      # ORToolsSolver warm-start used by quantum_driver
+├── .github/
+│   └── workflows/
+│       └── ci.yml               # CI/CD pipeline (lint, test, security, docker)
+├── Dockerfile                   # Multi-stage production container
+├── docker-compose.yml           # Container orchestration with resource limits
+├── .dockerignore                # Build context exclusions
 ├── requirements.txt             # Project requirements
 ├── test_quasar.py               # Complete test verification suite
 └── README.md                    # Project documentation
+```
+
+---
+
+## 🔒 Security Hardening & Middleware Stack
+
+QUASAR implements a **defense-in-depth** security architecture with layered middleware:
+
+```
+Client Request → ErrorSanitization → SecurityHeaders → RequestSizeLimit
+             → RateLimit → RequestTracing → CORS → Route Handler
+```
+
+### Middleware Components:
+
+| Layer | Module | Purpose |
+|-------|--------|---------|
+| **Security Headers** | `app/middleware/security.py` | OWASP headers (HSTS, CSP, X-Frame-Options, nosniff) |
+| **Request Size Limit** | `app/middleware/security.py` | Rejects payloads > 512KB (configurable) |
+| **Error Sanitization** | `app/middleware/security.py` | Hides internal stack traces in production |
+| **Rate Limiting** | `app/middleware/rate_limiter.py` | Sliding window: 20 req/60s global, 5 req/60s for `/optimize` |
+| **Request Tracing** | `app/middleware/observability.py` | Correlation ID (X-Request-ID), structured JSON logging, perf metrics |
+| **CORS** | FastAPI built-in | Configurable origins via `ALLOWED_ORIGINS` env var |
+
+### Environment Configuration:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QUASAR_ENV` | `production` | Environment mode (`production` / `development`) |
+| `IBM_QUANTUM_TOKEN` | — | IBM Quantum Platform API key |
+| `RATE_LIMIT_MAX_REQUESTS` | `20` | Max API requests per window |
+| `RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate limit window duration |
+| `OPTIMIZE_BURST_LIMIT` | `5` | Max optimization requests per window |
+| `MAX_REQUEST_BODY_KB` | `512` | Maximum request body size in KB |
+| `ALLOWED_ORIGINS` | `*` | Comma-separated CORS origins |
+| `LOG_LEVEL` | `INFO` | Logging verbosity |
+
+---
+
+## 🐳 Deployment (Docker)
+
+### Quick Start with Docker Compose:
+```bash
+# Build and run (production mode)
+docker compose up --build -d
+
+# View logs
+docker compose logs -f quasar-api
+
+# Stop
+docker compose down
+```
+
+### Manual Docker Build:
+```bash
+docker build -t quasar-api:latest .
+docker run -d -p 8000:8000 \
+  -e IBM_QUANTUM_TOKEN="your_token_here" \
+  -e QUASAR_ENV=production \
+  --name quasar \
+  quasar-api:latest
+```
+
+### Production Docker Features:
+- **Multi-stage build** — minimal attack surface (~200MB final image)
+- **Non-root execution** — runs as `quasar` user (UID/GID isolation)
+- **Health checks** — built-in `HEALTHCHECK` via `/health` endpoint
+- **Resource limits** — 2GB RAM / 2 CPU cores (configurable in compose)
+- **Log rotation** — JSON file driver, 10MB max, 3 file rotation
+
+---
+
+## ⚙️ CI/CD Pipeline (GitHub Actions)
+
+Automated pipeline triggers on push to `main` or `feature/*` branches:
+
+```
+┌─────────┐     ┌──────────┐     ┌──────────────┐     ┌──────────────┐
+│  Lint   │ ──> │   Test   │ ──> │   Security   │ ──> │ Docker Build │
+│ Flake8  │     │ test_quasar│    │  pip-audit   │     │  Buildx      │
+│ Bandit  │     │  .py      │    │  (CVE scan)  │     │  (verify)    │
+└─────────┘     └──────────┘     └──────────────┘     └──────────────┘
+```
+
+- **Flake8**: Code style enforcement (PEP 8, max-line 120)
+- **Bandit**: Static security analysis (Python-specific vulnerabilities)
+- **pip-audit**: Dependency CVE scanning against advisory databases
+- **Docker Buildx**: Image build verification with layer caching
+
+---
+
+## 📊 Observability & Monitoring
+
+### Structured Logging:
+- **Production**: JSON format (machine-parseable, ELK/CloudWatch compatible)
+- **Development**: Human-readable colored output with timestamps
+
+### Request Tracing:
+Every request receives a correlation ID (`X-Request-ID`) that propagates through:
+```
+API Receipt → Distance Matrix → OR-Tools → QAOA → QAI+HOBO → DB Write
+```
+
+### Performance Headers:
+- `X-Request-ID` — Unique trace identifier
+- `X-Response-Time-Ms` — Server-side processing time
+- `X-RateLimit-Remaining` — Remaining requests in current window
+
+### Health Check Endpoint:
+```
+GET /health → { status, database, quantum_backend, environment }
 ```
 
 ---
@@ -97,6 +219,8 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory (ignored by git) or export your IBM Quantum token:
 ```bash
 export IBM_QUANTUM_TOKEN="your_ibm_quantum_api_key_here"
+export QUASAR_ENV="development"          # Enables verbose logging
+export ALLOWED_ORIGINS="http://localhost:3000,http://localhost:5173"
 ```
 
 ### 3. Launching the Server

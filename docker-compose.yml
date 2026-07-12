@@ -1,0 +1,61 @@
+# =============================================================================
+# QUASAR — Docker Compose (Development & Production)
+#
+# Usage:
+#   Development:  docker compose up --build
+#   Production:   docker compose -f docker-compose.yml up -d
+#
+# Author: Trịnh Hoàng Tú (System Architecture & DevSecOps)
+# =============================================================================
+
+version: "3.9"
+
+services:
+  quasar-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quasar-api
+    ports:
+      - "8000:8000"
+    environment:
+      - QUASAR_ENV=${QUASAR_ENV:-production}
+      - IBM_QUANTUM_TOKEN=${IBM_QUANTUM_TOKEN:-}
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-20}
+      - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
+      - OPTIMIZE_BURST_LIMIT=${OPTIMIZE_BURST_LIMIT:-5}
+      - MAX_REQUEST_BODY_KB=${MAX_REQUEST_BODY_KB:-512}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+    volumes:
+      # Persist SQLite database and generated maps across restarts
+      - quasar-data:/app/data
+      - quasar-maps:/app/static/maps
+      - quasar-cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+        reservations:
+          memory: 512M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  quasar-data:
+    driver: local
+  quasar-maps:
+    driver: local
+  quasar-cache:
+    driver: local

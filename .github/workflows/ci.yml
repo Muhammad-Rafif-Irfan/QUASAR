@@ -1,0 +1,123 @@
+# =============================================================================
+# QUASAR — CI/CD Pipeline (GitHub Actions)
+#
+# Triggers:
+#   - Push to main or feature/* branches
+#   - Pull requests targeting main
+#
+# Stages:
+#   1. Lint & Static Analysis
+#   2. Unit & Integration Tests
+#   3. Security Scan (dependency audit)
+#   4. Docker Build Verification
+#
+# Author: Trịnh Hoàng Tú (DevSecOps & Security Hardening)
+# =============================================================================
+
+name: QUASAR CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, "feature/*"]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+  QUASAR_ENV: "testing"
+
+jobs:
+  # =========================================================================
+  # Job 1: Code Quality & Linting
+  # =========================================================================
+  lint:
+    name: "Lint & Static Analysis"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install linting tools
+        run: pip install flake8 bandit
+
+      - name: Run Flake8 (code style)
+        run: flake8 app/ core/ services/ --max-line-length=120 --ignore=E501,W503
+
+      - name: Run Bandit (security lint)
+        run: bandit -r app/ core/ services/ -ll --skip B101
+
+  # =========================================================================
+  # Job 2: Tests
+  # =========================================================================
+  test:
+    name: "Test Suite"
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run QUASAR verification suite
+        run: python test_quasar.py
+        env:
+          QUASAR_ENV: testing
+
+  # =========================================================================
+  # Job 3: Security Scan
+  # =========================================================================
+  security:
+    name: "Dependency Security Audit"
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install safety scanner
+        run: pip install pip-audit
+
+      - name: Audit dependencies for known vulnerabilities
+        run: pip-audit -r requirements.txt --strict
+        continue-on-error: true  # Advisory — don't block builds on transitive CVEs
+
+  # =========================================================================
+  # Job 4: Docker Build Verification
+  # =========================================================================
+  docker:
+    name: "Docker Build"
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: quasar-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
