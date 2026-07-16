@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Map, Navigation, PackageCheck, Route, Settings, TriangleAlert, Truck, type LucideIcon } from 'lucide-react'
+import RoutePlanner from './RoutePlanner'
 
 type Metric = {
   label: string
@@ -42,18 +43,51 @@ const historicalRecords = [
   { period: 'Sat, 11 May', deliveries: '11 delivered', routes: '1 completed route' },
 ]
 
+type SettingsModalProps = {
+  onSave: (event: FormEvent<HTMLFormElement>) => void
+  onClose: () => void
+}
+
+// Shared supporting state used from the Overview and Route Planner navigation.
+function SettingsModal({ onSave, onClose }: SettingsModalProps) {
+  return <div className="modal-backdrop" role="presentation"><form className="settings-modal" aria-modal="true" aria-labelledby="settings-title" onSubmit={onSave}><div className="settings-modal__heading"><div><p className="section-label">Settings</p><h2 id="settings-title">Operational configuration</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Close settings">&times;</button></div><p className="settings-copy">Update solver and backend preferences for the operations workspace.</p><div className="settings-fields"><label>Default solver<input defaultValue="QAOA+" /></label><label>Number of layers<input defaultValue="5" inputMode="numeric" /></label><label>Quantum backend<input defaultValue="AerSimulator / IBM QPU" /></label><label>Parameter alpha<input defaultValue="0.73" inputMode="decimal" /></label><label>Parameter beta<input defaultValue="0.27" inputMode="decimal" /></label></div><div className="settings-actions"><button type="submit" className="save-settings">Save Settings</button><button type="button" className="cancel-settings" onClick={onClose}>Cancel</button></div></form></div>
+}
+
 // Screen 01 page component: Operations Overview.
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [currentScreen, setCurrentScreen] = useState<'overview' | 'planner'>('overview')
 
   // Start Routing click handler: move to the approved Route Planner state.
   const handleStartRouting = () => {
-    window.location.hash = '#route-planner'
+    setCurrentScreen('planner')
   }
 
   const handleSaveSettings = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSettingsOpen(false)
+  }
+
+  if (currentScreen === 'planner') {
+    return (
+      <main className="app">
+        <header className="topbar">
+          <a className="brand" href="#overview" aria-label="Quasar home">
+            <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="15" cy="15" r="9" stroke="currentColor" strokeWidth="2.2"/>
+              <path d="M21.5 21.5L27 27" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+              <path d="M10.5 12.5C13.2 13.4 15.5 15.6 18.5 18.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              <circle cx="10" cy="12" r="1.6" fill="currentColor"/>
+              <circle cx="19" cy="19" r="1.6" fill="currentColor"/>
+            </svg>
+            <span>QUASAR</span>
+          </a>
+          <div className="topbar-meta"><span className="system-status">Connected</span><span>Tuesday, 14 May</span><button className="avatar" aria-label="Open profile">AK</button></div>
+        </header>
+        <RoutePlanner onBack={() => setCurrentScreen('overview')} onOpenSettings={() => setSettingsOpen(true)} />
+        {settingsOpen && <SettingsModal onSave={handleSaveSettings} onClose={() => setSettingsOpen(false)} />}
+      </main>
+    )
   }
 
   return (
@@ -93,7 +127,7 @@ function App() {
         </section>
       </section>
 
-      {settingsOpen && <div className="modal-backdrop" role="presentation"><form className="settings-modal" aria-modal="true" aria-labelledby="settings-title" onSubmit={handleSaveSettings}><div className="settings-modal__heading"><div><p className="section-label">Settings</p><h2 id="settings-title">Operational configuration</h2></div><button type="button" className="modal-close" onClick={() => setSettingsOpen(false)} aria-label="Close settings">&times;</button></div><p className="settings-copy">Update solver and backend preferences for the operations workspace.</p><div className="settings-fields"><label>Default solver<input defaultValue="QAOA+" /></label><label>Number of layers<input defaultValue="5" inputMode="numeric" /></label><label>Quantum backend<input defaultValue="AerSimulator / IBM QPU" /></label><label>Parameter alpha<input defaultValue="0.73" inputMode="decimal" /></label><label>Parameter beta<input defaultValue="0.27" inputMode="decimal" /></label></div><div className="settings-actions"><button type="submit" className="save-settings">Save Settings</button><button type="button" className="cancel-settings" onClick={() => setSettingsOpen(false)}>Cancel</button></div></form></div>}
+      {settingsOpen && <SettingsModal onSave={handleSaveSettings} onClose={() => setSettingsOpen(false)} />}
     </main>
   )
 }
