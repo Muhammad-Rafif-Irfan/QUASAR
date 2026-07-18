@@ -36,6 +36,28 @@ before the modules can produce benchmark claims:
    position and visit constraints claimed by the module.
 8. Results return only a bitstring. Route decoding, constraint validation,
    objective recomputation, and best-feasible-sample selection are required.
+9. FALQON applies an observable layout obtained from a dummy circuit instead
+   of the transpiled circuit being evaluated. QAOA runners also transpile once
+   for a layout and then transpile each bound circuit again.
+
+## Runtime integration safeguards
+
+- Do not accept IBM credentials in API request payloads. Read them only from
+  the deployment secret environment.
+- Pin a tested `qiskit`/`qiskit-ibm-runtime` version pair before CI or
+  deployment.
+- Move these root modules into an importable package before backend use.
+- Add backend allowlisting and verify operational status, simulator policy,
+  qubit capacity, and the intended IBM instance/CRN.
+- Enforce server-side limits for qubits, shots, layers, optimizer evaluations,
+  total submitted jobs, and estimated budget.
+- Add timeout, cancellation, retry, and persisted job-state handling around
+  every `job.result()` call.
+- Use a Runtime session or batch where appropriate; one remote job per COBYLA
+  evaluation and many jobs per FALQON layer can otherwise cause long queues
+  and uncontrolled cost.
+- Keep hardware tests manual. CI must use local or mocked primitives and scan
+  these modules for lint, security issues, and leaked secrets.
 
 ## Acceptance criteria
 
