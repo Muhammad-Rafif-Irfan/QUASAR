@@ -40,18 +40,18 @@ def validate_tour(tour: list[int], n: int) -> tuple[bool, str | None]:
         return False, f"Tour does not start at depot (index 0): starts with {tour[0]}"
     if tour[-1] != 0:
         return False, f"Tour does not end at depot (index 0): ends with {tour[-1]}"
-    
+
     middle = tour[1:-1]
     if len(set(middle)) != len(middle):
         return False, "Tour contains duplicate visits to the same stop"
-        
+
     expected_stops = set(range(1, n))
     actual_stops = set(middle)
     if expected_stops != actual_stops:
         missing = expected_stops - actual_stops
         extra = actual_stops - expected_stops
         return False, f"Tour does not visit all stops. Missing: {missing}, Extra/Invalid: {extra}"
-        
+
     return True, None
 
 
@@ -70,22 +70,26 @@ def get_quantum_backend_and_sampler():
     (backend, sampler, pass_manager, is_simulator)
     """
     # Prefer IBM_QUANTUM_TOKEN, fall back to QISKIT_IBM_TOKEN
-    token = os.environ.get("IBM_QUANTUM_TOKEN") or os.environ.get("QISKIT_IBM_TOKEN")
-    
+    token = os.environ.get(
+        "IBM_QUANTUM_TOKEN") or os.environ.get("QISKIT_IBM_TOKEN")
+
     if token:
         try:
             from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2 as Sampler
             from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
-            
-            service = QiskitRuntimeService(channel="ibm_quantum_platform", token=token)
+
+            service = QiskitRuntimeService(
+                channel="ibm_quantum_platform", token=token)
             backend = service.least_busy(operational=True, min_num_qubits=127)
-            pm = generate_preset_pass_manager(target=backend.target, optimization_level=3)
+            pm = generate_preset_pass_manager(
+                target=backend.target, optimization_level=3)
             sampler = Sampler(mode=backend)
             sampler.options.default_shots = 1024
             return backend, sampler, pm, False
         except Exception as e:
-            print(f"WARNING: Failed to connect to IBM Quantum ({e}). Falling back to local simulator.")
-            
+            print(
+                f"WARNING: Failed to connect to IBM Quantum ({e}). Falling back to local simulator.")
+
     # Local Statevector Simulator fallback
     from qiskit.primitives import StatevectorSampler
     sampler = StatevectorSampler()
@@ -150,14 +154,14 @@ def solve_qaoa(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool
     qaoa_total_qpu_time = 0.0
 
     def build_qaoa(gamma, beta):
-        qc = QuantumCircuit(n-1)
-        qc.h(range(n-1))
-        for i in range(n-1):
-            for j in range(i+1, n-1):
+        qc = QuantumCircuit(n - 1)
+        qc.h(range(n - 1))
+        for i in range(n - 1):
+            for j in range(i + 1, n - 1):
                 qc.cx(i, j)
                 qc.rz(gamma, j)
                 qc.cx(i, j)
-        qc.rx(beta, range(n-1))
+        qc.rx(beta, range(n - 1))
         qc.measure_all()
         return qc
 
@@ -165,10 +169,10 @@ def solve_qaoa(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool
         nonlocal qaoa_iter, qaoa_best_dist, qaoa_best_tour, qaoa_total_qpu_time
         qaoa_iter += 1
         qc = build_qaoa(params[0], params[1])
-        
+
         backend_name = "Local Statevector Simulator" if is_simulator else backend.name
         job_id_placeholder = f"sim-qaoa-{qaoa_iter}-{uuid.uuid4().hex[:8]}" if is_simulator else "PENDING"
-        
+
         q_job = QuantumJob(
             run_id=run_id,
             job_id=job_id_placeholder,
@@ -179,7 +183,7 @@ def solve_qaoa(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool
         )
         db.add(q_job)
         db.commit()
-        
+
         try:
             if is_simulator:
                 job = sampler.run([qc])
@@ -188,9 +192,9 @@ def solve_qaoa(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool
                 job = sampler.run([isa_qc])
                 q_job.job_id = job.job_id()
                 db.commit()
-                
+
             result = job.result()
-            
+
             quantum_seconds = 0.0
             if not is_simulator:
                 try:
@@ -198,11 +202,11 @@ def solve_qaoa(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool
                 except Exception:
                     pass
             qaoa_total_qpu_time += quantum_seconds
-            
+
             q_job.status = "COMPLETED"
             q_job.qpu_time_seconds = quantum_seconds
             db.commit()
-            
+
             # Robust count reading from PubResult
             data = result[0].data
             counts = None
@@ -213,17 +217,18 @@ def solve_qaoa(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool
                     break
             if counts is None:
                 counts = data.meas.get_counts()
-                
+
             best_bits = max(counts, key=counts.get)
-            tour = [0] + [i+1 for i, b in enumerate(reversed(best_bits)) if b == '1']
+            tour = [0] + [i + 1 for i,
+                          b in enumerate(reversed(best_bits)) if b == '1']
             tour.extend([i for i in range(1, n) if i not in tour])
             tour.append(0)
-            
+
             dist = tour_distance(tour, dist_matrix)
             if dist < qaoa_best_dist:
                 qaoa_best_dist = dist
                 qaoa_best_tour = tour
-                
+
             return float(dist)
         except Exception as e:
             q_job.status = "FAILED"
@@ -260,7 +265,8 @@ def solve_qai_hobo(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: 
             if q_job:
                 q_job.job_id = payload.get("job_id", q_job.job_id)
                 q_job.status = "COMPLETED"
-                q_job.qpu_time_seconds = float(payload.get("qpu_time_seconds", 0.0))
+                q_job.qpu_time_seconds = float(
+                    payload.get("qpu_time_seconds", 0.0))
                 db.commit()
         elif event == "job_failed":
             q_job = active_jobs.get(payload["algorithm"])
@@ -297,11 +303,11 @@ def run_optimization_pipeline(run_id: str, depot: dict, stops: list[dict]):
         dist_matrix, G, nodes = calculate_distance_matrix(depot, stops)
         points = [depot] + stops
         n = len(points)
-        
+
         # Step 2: OR-Tools Classical Baseline
         ort_tour, ort_dist, ort_time_ms = solve_or_tools(dist_matrix)
         is_val, val_err = validate_tour(ort_tour, n)
-        
+
         ort_result = BenchmarkResult(
             run_id=run_id,
             algorithm="OR-Tools",
@@ -314,21 +320,23 @@ def run_optimization_pipeline(run_id: str, depot: dict, stops: list[dict]):
         )
         db.add(ort_result)
         db.commit()
-        
+
         # Save baseline map
-        render_map(ort_tour, points, G, nodes, f"static/maps/{run_id}_OR_Tools.html", f"OR-Tools ({ort_dist}m)", "orange")
+        render_map(ort_tour, points, G, nodes,
+                   f"static/maps/{run_id}_OR_Tools.html", f"OR-Tools ({ort_dist}m)", "orange")
 
         # Step 3: Connect to Quantum Backend
         backend, sampler, pm, is_simulator = get_quantum_backend_and_sampler()
 
         # Step 4: Run QAOA
         t0_qaoa = time.time()
-        qaoa_tour, qaoa_dist, _ = solve_qaoa(dist_matrix, backend, sampler, pm, is_simulator, run_id, db)
+        qaoa_tour, qaoa_dist, _ = solve_qaoa(
+            dist_matrix, backend, sampler, pm, is_simulator, run_id, db)
         qaoa_time_ms = (time.time() - t0_qaoa) * 1000.0
-        
+
         qaoa_is_val, qaoa_val_err = validate_tour(qaoa_tour, n)
         qaoa_ratio = float(qaoa_dist / ort_dist) if ort_dist > 0 else 0.0
-        
+
         qaoa_result = BenchmarkResult(
             run_id=run_id,
             algorithm="QUBO+QAOA",
@@ -341,17 +349,19 @@ def run_optimization_pipeline(run_id: str, depot: dict, stops: list[dict]):
         )
         db.add(qaoa_result)
         db.commit()
-        
-        render_map(qaoa_tour, points, G, nodes, f"static/maps/{run_id}_QAOA.html", f"QAOA ({qaoa_dist}m)", "red")
+
+        render_map(qaoa_tour, points, G, nodes,
+                   f"static/maps/{run_id}_QAOA.html", f"QAOA ({qaoa_dist}m)", "red")
 
         # Step 5: Run QAI+HOBO
         t0_qai = time.time()
-        qai_tour, qai_dist, _ = solve_qai_hobo(dist_matrix, backend, sampler, pm, is_simulator, ort_tour, run_id, db)
+        qai_tour, qai_dist, _ = solve_qai_hobo(
+            dist_matrix, backend, sampler, pm, is_simulator, ort_tour, run_id, db)
         qai_time_ms = (time.time() - t0_qai) * 1000.0
-        
+
         qai_is_val, qai_val_err = validate_tour(qai_tour, n)
         qai_ratio = float(qai_dist / ort_dist) if ort_dist > 0 else 0.0
-        
+
         qai_result = BenchmarkResult(
             run_id=run_id,
             algorithm="QAI+HOBO",
@@ -364,13 +374,14 @@ def run_optimization_pipeline(run_id: str, depot: dict, stops: list[dict]):
         )
         db.add(qai_result)
         db.commit()
-        
-        render_map(qai_tour, points, G, nodes, f"static/maps/{run_id}_QAI_HOBO.html", f"QAI+HOBO ({qai_dist}m)", "green")
+
+        render_map(qai_tour, points, G, nodes,
+                   f"static/maps/{run_id}_QAI_HOBO.html", f"QAI+HOBO ({qai_dist}m)", "green")
 
         # Update status to COMPLETED
         run.status = "COMPLETED"
         db.commit()
-        
+
     except Exception as e:
         # Update status to FAILED and record error message
         db.rollback()

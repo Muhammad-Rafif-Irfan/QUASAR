@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import time
+
 
 class BaseQuantumSolver(ABC):
     def __init__(self, distance_matrix):
@@ -8,8 +8,8 @@ class BaseQuantumSolver(ABC):
         """
         self.distance_matrix = distance_matrix
         self.num_nodes = len(distance_matrix)
-        
-        # State Tracking 
+
+        # State Tracking
         self.best_tour = []
         self.best_dist = float('inf')
         self.qpu_seconds = 0.0         # Murni waktu komputasi mesin IBM
@@ -22,7 +22,7 @@ class BaseQuantumSolver(ABC):
         # Rule 1: Must end at the depot (number of stops + 1)
         if len(tour) != self.num_nodes + 1:
             return False
-            
+
         # Rule 2: Must start and return to the Depot (node 0)
         if tour[0] != 0 or tour[-1] != 0:
             return False
@@ -43,7 +43,7 @@ class BaseQuantumSolver(ABC):
 
         dist = 0
         for i in range(len(tour) - 1):
-            dist += self.distance_matrix[tour[i]][tour[i+1]]
+            dist += self.distance_matrix[tour[i]][tour[i + 1]]
         return dist
 
     @abstractmethod

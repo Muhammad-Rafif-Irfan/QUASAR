@@ -2,19 +2,23 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
+
 class Location(BaseModel):
     name: str = Field(..., example="Pelabuhan")
     lat: float = Field(..., example=16.0650)
     lon: float = Field(..., example=108.2200)
 
+
 class OptimizeRequest(BaseModel):
     depot: Location
     stops: List[Location] = Field(..., min_items=1)
+
 
 class OptimizeResponse(BaseModel):
     run_id: str
     status: str
     message: str
+
 
 class BenchmarkResultSchema(BaseModel):
     algorithm: str
@@ -30,6 +34,7 @@ class BenchmarkResultSchema(BaseModel):
         orm_mode = True
         from_attributes = True
 
+
 class QuantumJobSchema(BaseModel):
     job_id: str
     algorithm: str
@@ -41,6 +46,7 @@ class QuantumJobSchema(BaseModel):
     class Config:
         orm_mode = True
         from_attributes = True
+
 
 class RunStatusResponse(BaseModel):
     run_id: str

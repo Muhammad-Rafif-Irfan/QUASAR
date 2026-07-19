@@ -3,13 +3,16 @@ from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, Foreig
 from sqlalchemy.orm import relationship
 from app.database import Base
 
+
 class BenchmarkRun(Base):
     __tablename__ = "benchmark_runs"
 
     id = Column(String, primary_key=True, index=True)
-    status = Column(String, default="PENDING")  # PENDING, RUNNING, COMPLETED, FAILED
+    # PENDING, RUNNING, COMPLETED, FAILED
+    status = Column(String, default="PENDING")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
+                        onupdate=datetime.datetime.utcnow)
     error_message = Column(String, nullable=True)
     depot_name = Column(String, nullable=False)
     depot_lat = Column(Float, nullable=False)
@@ -17,8 +20,10 @@ class BenchmarkRun(Base):
     stops_count = Column(Integer, default=0)
     stops_data = Column(Text, nullable=True)  # JSON serialized input stops
 
-    results = relationship("BenchmarkResult", back_populates="run", cascade="all, delete-orphan")
-    quantum_jobs = relationship("QuantumJob", back_populates="run", cascade="all, delete-orphan")
+    results = relationship(
+        "BenchmarkResult", back_populates="run", cascade="all, delete-orphan")
+    quantum_jobs = relationship(
+        "QuantumJob", back_populates="run", cascade="all, delete-orphan")
 
 
 class QuantumJob(Base):
@@ -29,7 +34,8 @@ class QuantumJob(Base):
     job_id = Column(String, nullable=False, index=True)
     algorithm = Column(String, nullable=False)  # QAOA, QAI_HOBO
     backend_name = Column(String, nullable=False)
-    status = Column(String, default="SUBMITTED")  # SUBMITTED, COMPLETED, FAILED
+    # SUBMITTED, COMPLETED, FAILED
+    status = Column(String, default="SUBMITTED")
     qpu_time_seconds = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
@@ -42,11 +48,13 @@ class BenchmarkResult(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     run_id = Column(String, ForeignKey("benchmark_runs.id"), nullable=False)
     algorithm = Column(String, nullable=False)  # OR-Tools, QAOA, QAI_HOBO
-    tour = Column(Text, nullable=False)  # JSON serialized list of route indices
+    # JSON serialized list of route indices
+    tour = Column(Text, nullable=False)
     distance_meters = Column(Float, nullable=False)
     is_valid = Column(Boolean, default=True)
     validation_error = Column(String, nullable=True)
-    approximation_ratio = Column(Float, nullable=True)  # Relative to OR-Tools (quantum_dist / ort_dist)
+    # Relative to OR-Tools (quantum_dist / ort_dist)
+    approximation_ratio = Column(Float, nullable=True)
     execution_time_ms = Column(Float, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
