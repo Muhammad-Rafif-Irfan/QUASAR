@@ -27,8 +27,31 @@ import numpy as np
 from collections import defaultdict
 from qiskit import QuantumCircuit, transpile
 
-from hamiltonian import build_ising, normalize, hp_terms
+from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms, eval_bitstring
 from ibm_connection  import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
+
+def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:
+    """
+    Decode bitstring and validate feasibility.
+    Returns fields to be merged into the main result dict.
+    """
+    decoded   = decode_bitstring(
+        bitstring,
+        p["n_nodes"],
+        p["n_vehicles"],
+        p["starting_nodes"],
+        np.array(p["demands"], dtype=float),
+        np.array(p["capacities"], dtype=float),
+    )
+    objective = compute_objective(decoded["routes"], matrix) if decoded["valid"] else None
+    return {
+        "routes":      decoded["routes"],
+        "valid":       decoded["valid"],
+        "violations":  decoded["violations"],
+        "route_cost":  objective,
+    }
+
+
 
 
 # ═════════════════════════════════════════════
@@ -56,7 +79,7 @@ def _build_circuit(
     for layer in range(n_layers):
         # Cost unitary
         for pauli_str, coeff in hterms:
-            nz = [(i, p) for i, p in enumerate(pauli_str) if p != "I"]
+            nz = [(n_qubits - 1 - i, p) for i, p in enumerate(pauli_str) if p != "I"]
             if len(nz) == 1:
                 qc.rz(2 * coeff * dt, nz[0][0])
             elif len(nz) == 2:
@@ -83,7 +106,7 @@ def _group_commutator_terms(
     """
     groups: dict[int, dict[str, float]] = defaultdict(dict)
     for pauli_str, coeff in hterms:
-        nz = [(i, p) for i, p in enumerate(pauli_str) if p != "I"]
+        nz = [(n_qubits - 1 - i, p) for i, p in enumerate(pauli_str) if p != "I"]
         for j in range(n_qubits):
             if len(nz) == 1:
                 idx, p = nz[0]
@@ -152,17 +175,18 @@ def run_falqon_ibm(payload: dict) -> dict:
     p          = parse_payload(payload)
     n_nodes    = p["n_nodes"]
     n_vehicles = p["n_vehicles"]
-    n_qubits   = n_nodes * n_nodes * n_vehicles
     n_layers   = p["n_layers"]
     dt         = p["dt"]
     shots      = p["shots"]
 
     # Build and normalize Hamiltonian
-    ising_op          = build_ising(
+    matrix_orig = p["matrix"].copy()
+    ising_op = build_ising(
         p["matrix"], p["demands"], p["capacities"],
-        n_nodes, n_vehicles, p["alpha"], p["beta"],
-        p["lambda_scale"], p["demand_priority"],
+        n_nodes, n_vehicles, p["starting_nodes"],
+        p["alpha"], p["beta"], p["lambda_scale"], p["demand_priority"],
     )
+    n_qubits = ising_op.num_qubits
     ising_norm, max_c = normalize(ising_op)
     hterms            = hp_terms(ising_norm)
     comm_groups       = _group_commutator_terms(hterms, n_qubits)
@@ -173,10 +197,11 @@ def run_falqon_ibm(payload: dict) -> dict:
     sampler   = get_sampler(backend, p["use_dd"])
     estimator = get_estimator(backend, p["resilience_level"], p["use_dd"])
 
-    # ISA observable for Estimator
-    dummy_qc  = QuantumCircuit(n_qubits)
-    dummy_qc.h(range(n_qubits))
-    isa_obs   = ising_norm.apply_layout(pm.run(dummy_qc).layout)
+    # ISA observable: apply layout from first actual circuit (not dummy)
+    # Build layer-1 circuit to get the correct transpiled layout
+    _init_circuit = _build_circuit(n_qubits, hp_terms(ising_norm), [0.0], 1, dt, measure=False)
+    _isa_init     = pm.run(_init_circuit)
+    isa_obs       = ising_norm.apply_layout(_isa_init.layout)
 
     betas          = [0.0]
     best_energy    = np.inf
@@ -209,7 +234,7 @@ def run_falqon_ibm(payload: dict) -> dict:
             job_comm = sampler.run([(isa_comm,)], shots=shots)
             job_ids.append(job_comm.job_id())
             data_bin = job_comm.result()[0].data
-            register_name = list(data_bin.keys())[0]
+            register_name = list(data_bin.keys())[0] 
             counts   = data_bin[register_name].get_counts()
             total    = sum(counts.values())
             for pauli_str, coeff in terms.items():
@@ -234,7 +259,49 @@ def run_falqon_ibm(payload: dict) -> dict:
             data_bin_samp = job_samp.result()[0].data
             reg_name_samp = list(data_bin_samp.keys())[0]
             counts      = data_bin_samp[reg_name_samp].get_counts()
-            best_bs, best_prob = best_bitstring(counts, shots)
+            best_bs = None
+            best_prob = 0.0
+            best_val = float('inf')
+            for bs, cnt in counts.items():
+                val = eval_bitstring(bs, hterms, n_qubits) * max_c
+                try:
+                    decoded = decode_bitstring(
+                        bs,
+                        n_nodes,
+                        n_vehicles,
+                        p["starting_nodes"],
+                        np.array(p["demands"], dtype=float),
+                        np.array(p["capacities"], dtype=float),
+                    )
+                except ValueError:
+                    continue
+                if decoded["valid"] and val < best_val:
+                    best_val = val
+                    best_bs = bs
+                    best_prob = cnt / shots
+            if best_bs is None:
+                best_bs = None
+            best_prob = 0.0
+            best_val = float('inf')
+            for bs, cnt in counts.items():
+                val = eval_bitstring(bs, hterms, n_qubits) * max_c
+                try:
+                    decoded = decode_bitstring(
+                        bs,
+                        n_nodes,
+                        n_vehicles,
+                        p["starting_nodes"],
+                        np.array(p["demands"], dtype=float),
+                        np.array(p["capacities"], dtype=float),
+                    )
+                except ValueError:
+                    continue
+                if decoded["valid"] and val < best_val:
+                    best_val = val
+                    best_bs = bs
+                    best_prob = cnt / shots
+            if best_bs is None:
+                best_bs, best_prob = best_bitstring(counts, shots)
 
     return {
         "bitstring":      best_bs,
@@ -249,4 +316,5 @@ def run_falqon_ibm(payload: dict) -> dict:
         "algorithm":      "FALQON",
         "job_ids":        job_ids,
         "success_prob":   round(best_prob, 4),
+        **_decode_result(best_bs, p, matrix_orig),
     }

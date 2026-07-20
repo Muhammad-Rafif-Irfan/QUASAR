@@ -28,8 +28,31 @@ import scipy.optimize
 from qiskit import QuantumCircuit
 from qiskit.circuit.library import qaoa_ansatz
 
-from hamiltonian import build_ising, normalize
+from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective
 from ibm_connection  import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
+
+def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:
+    """
+    Decode bitstring and validate feasibility.
+    Returns fields to be merged into the main result dict.
+    """
+    decoded   = decode_bitstring(
+        bitstring,
+        p["n_nodes"],
+        p["n_vehicles"],
+        p["starting_nodes"],
+        np.array(p["demands"], dtype=float),
+        np.array(p["capacities"], dtype=float),
+    )
+    objective = compute_objective(decoded["routes"], matrix) if decoded["valid"] else None
+    return {
+        "routes":      decoded["routes"],
+        "valid":       decoded["valid"],
+        "violations":  decoded["violations"],
+        "route_cost":  objective,
+    }
+
+
 
 
 def run_qaoa_ibm(payload: dict) -> dict:
@@ -50,16 +73,16 @@ def run_qaoa_ibm(payload: dict) -> dict:
     p          = parse_payload(payload)
     n_nodes    = p["n_nodes"]
     n_vehicles = p["n_vehicles"]
-    n_qubits   = n_nodes * n_nodes * n_vehicles
     shots      = p["shots"]
     reps       = p["p"]
 
     # Build and normalize Hamiltonian
-    ising_op          = build_ising(
+    ising_op = build_ising(
         p["matrix"], p["demands"], p["capacities"],
-        n_nodes, n_vehicles, p["alpha"], p["beta"],
-        p["lambda_scale"], p["demand_priority"],
+        n_nodes, n_vehicles, p["starting_nodes"],
+        p["alpha"], p["beta"], p["lambda_scale"], p["demand_priority"],
     )
+    n_qubits = ising_op.num_qubits
     ising_norm, max_c = normalize(ising_op)
 
     # Connect to IBM
@@ -68,10 +91,17 @@ def run_qaoa_ibm(payload: dict) -> dict:
     estimator = get_estimator(backend, p["resilience_level"], p["use_dd"])
     sampler   = get_sampler(backend, p["use_dd"])
 
-    # Build QAOA ansatz and ISA observable
+    # Build QAOA ansatz, transpile once to get layout
     ansatz     = qaoa_ansatz(ising_norm, reps=reps, flatten=True)
     param_list = list(ansatz.parameters)
-    isa_obs    = ising_norm.apply_layout(pm.run(ansatz).layout)
+    # Transpile with placeholder parameters to get layout
+    import numpy as _np
+    _x0        = _np.zeros(len(param_list))
+    _bound0    = ansatz.assign_parameters(dict(zip(param_list, _x0)))
+    _isa_bound = pm.run(_bound0)
+    isa_obs    = ising_norm.apply_layout(_isa_bound.layout)
+    # Store layout for reuse — avoid re-transpiling each evaluation
+    _layout    = _isa_bound.layout
 
     cost_history: list[float] = []
     job_ids:      list[str]   = []
@@ -79,7 +109,9 @@ def run_qaoa_ibm(payload: dict) -> dict:
 
     def objective(params: np.ndarray) -> float:
         bound    = ansatz.assign_parameters(dict(zip(param_list, params)))
+        # Apply stored layout instead of full re-transpile
         isa_circ = pm.run(bound)
+        isa_circ.layout = _layout
         job      = estimator.run(pubs=[(isa_circ, [isa_obs])])
         job_ids.append(job.job_id())
         # Optimizer works in normalized space; rescale for logging
@@ -97,6 +129,8 @@ def run_qaoa_ibm(payload: dict) -> dict:
         options={"maxiter": p["maxiter"], "rhobeg": 0.5},
     )
 
+    matrix_orig = p["matrix"].copy()
+
     # Final sampling with optimal parameters
     print("  Final sampling...")
     bound_final = ansatz.assign_parameters(dict(zip(param_list, opt.x)))
@@ -105,7 +139,29 @@ def run_qaoa_ibm(payload: dict) -> dict:
     job_samp  = sampler.run([(isa_final,)], shots=shots)
     job_ids.append(job_samp.job_id())
     counts    = job_samp.result()[0].data.meas.get_counts()
-    best_bs, best_prob = best_bitstring(counts, shots)
+
+    best_bs = None
+    best_prob = 0.0
+    best_val = float('inf')
+    for bs, cnt in counts.items():
+        val = eval_bitstring(bs, hp_terms(ising_norm), n_qubits) * max_c
+        try:
+            decoded = decode_bitstring(
+                bs,
+                n_nodes,
+                n_vehicles,
+                p["starting_nodes"],
+                np.array(p["demands"], dtype=float),
+                np.array(p["capacities"], dtype=float),
+            )
+        except ValueError:
+            continue
+        if decoded["valid"] and val < best_val:
+            best_val = val
+            best_bs = bs
+            best_prob = cnt / shots
+    if best_bs is None:
+        best_bs, best_prob = best_bitstring(counts, shots)
 
     return {
         "bitstring":    best_bs,
@@ -120,4 +176,5 @@ def run_qaoa_ibm(payload: dict) -> dict:
         "algorithm":    "QAOA",
         "job_ids":      job_ids,
         "success_prob": round(best_prob, 4),
+        **_decode_result(best_bs, p, matrix_orig),
     }

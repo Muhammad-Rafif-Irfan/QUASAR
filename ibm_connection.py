@@ -6,9 +6,8 @@ Handles IBM Quantum authentication, backend selection,
 and primitive (Sampler/Estimator) configuration.
 """
 
-import json
 import os
-
+import json
 import numpy as np
 from qiskit_ibm_runtime import (
     QiskitRuntimeService,
@@ -34,40 +33,8 @@ def parse_payload(payload: dict) -> dict:
     n_nodes        = matrix.shape[0]
     n_vehicles     = len(capacities)
 
-    if matrix.ndim != 2 or matrix.shape != (n_nodes, n_nodes):
-        raise ValueError("matrix must be a non-empty square N×N array")
-    if len(demands) != n_nodes:
-        raise ValueError("demands length must equal N")
-    if n_vehicles == 0:
-        raise ValueError("at least one vehicle capacity is required")
-    if len(starting_nodes) != n_vehicles:
-        raise ValueError("starting_nodes length must equal the vehicle count")
-    if not np.all(np.isfinite(matrix)) or np.any(matrix < 0):
-        raise ValueError("matrix entries must be finite and non-negative")
-    if not np.all(np.isfinite(demands)) or np.any(demands < 0):
-        raise ValueError("demands must be finite and non-negative")
-    if not np.all(np.isfinite(capacities)) or np.any(capacities <= 0):
-        raise ValueError("capacities must be finite and positive")
-    if any(node < 0 or node >= n_nodes for node in starting_nodes):
-        raise ValueError("starting_nodes entries must be valid node indices")
-
-    layers = int(payload.get("p", 2))
-    maxiter = int(payload.get("maxiter", 3))
-    shots = int(payload.get("shots", 4096))
-    falqon_layers = int(payload.get("n_layers", 3))
-    dt = float(payload.get("dt", 0.1))
-    iterations = int(payload.get("iterations", 3))
-    optimization_level = int(payload.get("optimization_level", 3))
-    resilience_level = int(payload.get("resilience_level", 1))
-
-    if min(layers, maxiter, shots, falqon_layers, iterations) <= 0:
-        raise ValueError("algorithm iteration, layer, and shot counts must be positive")
-    if dt <= 0:
-        raise ValueError("dt must be positive")
-    if optimization_level not in range(4):
-        raise ValueError("optimization_level must be between 0 and 3")
-    if resilience_level not in range(3):
-        raise ValueError("resilience_level must be between 0 and 2")
+    assert matrix.shape == (n_nodes, n_nodes), "matrix must be N×N"
+    assert len(demands) == n_nodes,             "demands length must equal N"
 
     return {
         # Problem parameters
@@ -82,17 +49,17 @@ def parse_payload(payload: dict) -> dict:
         "lambda_scale":    float(payload.get("lambda_scale",    10.0)),
         "demand_priority": bool( payload.get("demand_priority", False)),
         # Algorithm parameters
-        "p":               layers,
-        "maxiter":         maxiter,
-        "shots":           shots,
-        "n_layers":        falqon_layers,
-        "dt":              dt,
-        "iterations":      iterations,
+        "p":               int(  payload.get("p",               2)),
+        "maxiter":         int(  payload.get("maxiter",         3)),
+        "shots":           int(  payload.get("shots",           4096)),
+        "n_layers":        int(  payload.get("n_layers",        3)),
+        "dt":              float(payload.get("dt",              0.1)),
+        "iterations":      int(  payload.get("iterations",      3)),
         # IBM settings
         "token":               payload.get("token",               os.getenv("IBM_QUANTUM_TOKEN", "")),
         "backend_name":        payload.get("backend_name",        None),
-        "optimization_level":  optimization_level,
-        "resilience_level":    resilience_level,
+        "optimization_level":  int(  payload.get("optimization_level",  3)),
+        "resilience_level":    int(  payload.get("resilience_level",    1)),
         "use_dd":              bool( payload.get("use_dd",              True)),
     }
 
@@ -111,20 +78,12 @@ def get_backend(token: str, backend_name: str | None, n_qubits: int):
     -------
     IBMBackend instance
     """
-    if not token:
-        raise ValueError(
-            "IBM Quantum token required. Set IBM_QUANTUM_TOKEN or pass token explicitly."
-        )
+    assert token, "IBM Quantum token required. Set IBM_QUANTUM_TOKEN env var or pass 'token' in payload."
 
     service = QiskitRuntimeService(channel="ibm_quantum_platform", token=token)
 
     if backend_name:
         backend = service.backend(backend_name)
-        if backend.num_qubits < n_qubits:
-            raise ValueError(
-                f"backend {backend.name} has {backend.num_qubits} qubits; "
-                f"{n_qubits} are required"
-            )
         print(f"[IBM] Using specified backend: {backend.name} ({backend.num_qubits} qubits)")
     else:
         backend = service.least_busy(
@@ -166,9 +125,6 @@ def get_estimator(backend, resilience_level: int = 1, use_dd: bool = True) -> Es
 
 def best_bitstring(counts: dict, shots: int) -> tuple[str, float]:
     """Return most frequent bitstring and its success probability."""
-    if not counts:
-        raise ValueError("sampler returned no measurement counts")
     best = max(counts, key=counts.get)
-    total = sum(counts.values())
-    prob = counts[best] / total if total else 0.0
+    prob = counts[best] / shots
     return best, prob

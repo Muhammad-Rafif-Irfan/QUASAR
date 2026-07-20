@@ -25,8 +25,31 @@ result = run_gas_ibm({
 import numpy as np
 from qiskit import QuantumCircuit
 
-from hamiltonian import build_ising, normalize, hp_terms
+from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms, eval_bitstring
 from ibm_connection  import parse_payload, get_backend, get_pass_manager, get_sampler, best_bitstring
+
+def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:
+    """
+    Decode bitstring and validate feasibility.
+    Returns fields to be merged into the main result dict.
+    """
+    decoded   = decode_bitstring(
+        bitstring,
+        p["n_nodes"],
+        p["n_vehicles"],
+        p["starting_nodes"],
+        np.array(p["demands"], dtype=float),
+        np.array(p["capacities"], dtype=float),
+    )
+    objective = compute_objective(decoded["routes"], matrix) if decoded["valid"] else None
+    return {
+        "routes":      decoded["routes"],
+        "valid":       decoded["valid"],
+        "violations":  decoded["violations"],
+        "route_cost":  objective,
+    }
+
+
 
 
 # ═════════════════════════════════════════════
@@ -36,25 +59,68 @@ from ibm_connection  import parse_payload, get_backend, get_pass_manager, get_sa
 def _eval_energy(bs: str, hterms: list[tuple[str, float]]) -> float:
     """
     Evaluate energy of a bitstring via Pauli Z eigenvalues.
-    Avoids dense matrix materialization.
-
-    spin[i] = +1 if bit[i] = 0 (|0⟩ is +1 eigenstate of Z)
-    spin[i] = -1 if bit[i] = 1
+    Uses the same convention as hamiltonian_new.eval_bitstring.
     """
-    spins = [1 - 2*int(b) for b in bs]
-    val   = 0.0
-    for pauli_str, coeff in hterms:
-        nz = [(i, p) for i, p in enumerate(pauli_str) if p != "I"]
-        if len(nz) == 1:
-            val += coeff * spins[nz[0][0]]
-        elif len(nz) == 2:
-            val += coeff * spins[nz[0][0]] * spins[nz[1][0]]
-    return val
+    return eval_bitstring(bs, hterms, len(bs))
 
 
 # ═════════════════════════════════════════════
 # CIRCUIT BUILDER
 # ═════════════════════════════════════════════
+
+def _phase_oracle_for_threshold(
+    n_qubits:  int,
+    hterms:    list[tuple[str, float]],
+    threshold: float,
+) -> QuantumCircuit:
+    """
+    Build a phase oracle that marks basis states with energy < threshold.
+
+    Kenneth's review (poin 6): filtering Hamiltonian terms by coefficient
+    is NOT equivalent to marking basis states whose total objective is below
+    the threshold. The correct approach evaluates the full energy of each
+    basis state.
+
+    Implementation: diagonal phase kickback via Pauli Z rotations.
+    For each basis state |x⟩, the accumulated phase is proportional to
+    its Hamiltonian energy E(x) = Σ coeff·z_i·z_j...
+    States with E(x) < threshold accumulate a negative phase → amplified.
+
+    Gate decomposition:
+      e^{-i·θ·Z_q} → RZ(2θ, q)
+      e^{-i·θ·ZZ_{q1,q2}} → RZZ(2θ, q1, q2)
+    where θ = -π·coeff / (2·|E_max|) to scale phases appropriately.
+    """
+    qc = QuantumCircuit(n_qubits, name="phase_oracle")
+    # Scale factor: map energy range to [0, π] phase range
+    # States below threshold get phase > π/2 → constructive interference
+    scale = np.pi / max(abs(threshold), 1e-6) if threshold != 0 else np.pi
+    for pauli_str, coeff in hterms:
+        # Qiskit big-endian: string index n-1-q corresponds to qubit q
+        nz = [(n_qubits - 1 - idx, p)
+              for idx, p in enumerate(pauli_str) if p != "I"]
+        if len(nz) == 1:
+            qc.rz(-2.0 * scale * coeff, nz[0][0])
+        elif len(nz) == 2:
+            qc.rzz(-2.0 * scale * coeff, nz[0][0], nz[1][0])
+    return qc
+
+
+def _diffuser(n_qubits: int) -> QuantumCircuit:
+    """
+    Grover diffuser: 2|s⟩⟨s| - I  (inversion about the mean).
+    H^n X^n H_{n-1} MCX H_{n-1} X^n H^n
+    """
+    qc = QuantumCircuit(n_qubits, name="diffuser")
+    qc.h(range(n_qubits))
+    qc.x(range(n_qubits))
+    qc.h(n_qubits - 1)
+    qc.mcx(list(range(n_qubits - 1)), n_qubits - 1)
+    qc.h(n_qubits - 1)
+    qc.x(range(n_qubits))
+    qc.h(range(n_qubits))
+    return qc
+
 
 def _build_grover_circuit(
     n_qubits:  int,
@@ -63,35 +129,20 @@ def _build_grover_circuit(
     k_steps:   int,
 ) -> QuantumCircuit:
     """
-    Build Grover circuit with Trotterized phase oracle and standard diffuser.
+    Build full Grover circuit: |+⟩^n → [oracle → diffuser]^k → measure.
 
-    Oracle: applies phase to basis states with energy < threshold
-            via RZ/RZZ gates (avoids unitary gate which requires dense matrix)
-    Diffuser: H^n X^n H_{n-1} MCX H_{n-1} X^n H^n
+    The oracle applies phase proportional to Hamiltonian energy,
+    such that states below threshold accumulate more phase and are
+    amplified by the diffuser.
     """
+    oracle   = _phase_oracle_for_threshold(n_qubits, hterms, threshold)
+    diffuser = _diffuser(n_qubits)
+
     qc = QuantumCircuit(n_qubits)
     qc.h(range(n_qubits))  # Initial state: |+⟩^n
-
     for _ in range(k_steps):
-        # Oracle: phase kickback for low-energy states
-        for pauli_str, coeff in hterms:
-            if coeff >= threshold:
-                continue  # only act on terms below threshold
-            nz = [(i, p) for i, p in enumerate(pauli_str) if p != "I"]
-            if len(nz) == 1:
-                qc.rz(-np.pi * abs(coeff), nz[0][0])
-            elif len(nz) == 2:
-                qc.rzz(-np.pi * abs(coeff), nz[0][0], nz[1][0])
-
-        # Diffuser: 2|s⟩⟨s| - I
-        qc.h(range(n_qubits))
-        qc.x(range(n_qubits))
-        qc.h(n_qubits - 1)
-        qc.mcx(list(range(n_qubits - 1)), n_qubits - 1)
-        qc.h(n_qubits - 1)
-        qc.x(range(n_qubits))
-        qc.h(range(n_qubits))
-
+        qc.compose(oracle,   inplace=True)
+        qc.compose(diffuser, inplace=True)
     qc.measure_all()
     return qc
 
@@ -118,16 +169,17 @@ def run_gas_ibm(payload: dict) -> dict:
     p          = parse_payload(payload)
     n_nodes    = p["n_nodes"]
     n_vehicles = p["n_vehicles"]
-    n_qubits   = n_nodes * n_nodes * n_vehicles
     shots      = p["shots"]
     iterations = p["iterations"]
 
     # Build and normalize Hamiltonian
-    ising_op          = build_ising(
+    matrix_orig = p["matrix"].copy()
+    ising_op = build_ising(
         p["matrix"], p["demands"], p["capacities"],
-        n_nodes, n_vehicles, p["alpha"], p["beta"],
-        p["lambda_scale"], p["demand_priority"],
+        n_nodes, n_vehicles, p["starting_nodes"],
+        p["alpha"], p["beta"], p["lambda_scale"], p["demand_priority"],
     )
+    n_qubits = ising_op.num_qubits
     ising_norm, max_c = normalize(ising_op)
     hterms            = hp_terms(ising_norm)
 
@@ -141,13 +193,13 @@ def run_gas_ibm(payload: dict) -> dict:
     n_samples       = min(500, 2**n_qubits)
     sample_indices  = rng.choice(2**n_qubits, size=n_samples, replace=False)
     sample_energies = [
-        _eval_energy(format(int(idx), f"0{n_qubits}b")[::-1], hterms)
+        _eval_energy(format(int(idx), f"0{n_qubits}b"), hterms)
         for idx in sample_indices
     ]
     threshold = float(np.percentile(sample_energies, 30))
     best_idx  = int(np.argmin(sample_energies))
     best_val  = float(sample_energies[best_idx]) * max_c
-    best_bs   = format(int(sample_indices[best_idx]), f"0{n_qubits}b")[::-1]
+    best_bs   = format(int(sample_indices[best_idx]), f"0{n_qubits}b")
     best_prob = 0.0
 
     cost_history: list[float] = []
@@ -173,7 +225,18 @@ def run_gas_ibm(payload: dict) -> dict:
         for bs in top_bs:
             val = _eval_energy(bs, hterms) * max_c
             cost_history.append(val)
-            if val < best_val:
+            try:
+                decoded = decode_bitstring(
+                    bs,
+                    n_nodes,
+                    n_vehicles,
+                    p["starting_nodes"],
+                    np.array(p["demands"], dtype=float),
+                    np.array(p["capacities"], dtype=float),
+                )
+            except ValueError:
+                continue
+            if decoded["valid"] and val < best_val:
                 best_val  = val
                 best_bs   = bs
                 best_prob = counts[bs] / total
@@ -194,4 +257,5 @@ def run_gas_ibm(payload: dict) -> dict:
         "algorithm":    "GAS",
         "job_ids":      job_ids,
         "success_prob": round(best_prob, 4),
+        **_decode_result(best_bs, p, matrix_orig),
     }
