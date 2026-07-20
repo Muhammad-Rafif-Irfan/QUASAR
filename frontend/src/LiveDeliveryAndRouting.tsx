@@ -23,7 +23,7 @@ const truckRoutes = [
 ]
 
 // Screen 04 mirrors the approved live-routing wireframe with mock operational data.
-function LiveDeliveryAndRouting({ onEndDelivery }: { onEndDelivery: () => void }) {
+function LiveDeliveryAndRouting({ onChangeAddress, onAddNewOrder, onEndDelivery, onViewLogDetails }: { onChangeAddress: () => void; onAddNewOrder: () => void; onEndDelivery: () => void; onViewLogDetails: () => void }) {
   return (
     <section className="workspace live-routing-workspace" aria-labelledby="live-delivery-title">
       <div className="live-routing-intro">
@@ -32,7 +32,7 @@ function LiveDeliveryAndRouting({ onEndDelivery }: { onEndDelivery: () => void }
           <h1 id="live-delivery-title">Live Delivery and Routing</h1>
           <p className="subtitle">Monitor the active route and current vehicle assignments.</p>
         </div>
-        <button type="button" className="settings-button">Change Address</button>
+        <button type="button" className="settings-button" onClick={onChangeAddress}>Change Address</button>
       </div>
 
       <section className="live-routing-metrics" aria-label="Live routing summary">
@@ -65,10 +65,10 @@ function LiveDeliveryAndRouting({ onEndDelivery }: { onEndDelivery: () => void }
 
       <section className="live-routing-footer">
         <div className="live-routing-controls">
-          <div className="live-order-actions"><button type="button" className="settings-button"><PackageCheck size={15} /> Add new order</button><button type="button" className="settings-button" onClick={onEndDelivery}>End Delivery</button></div>
+          <div className="live-order-actions"><button type="button" className="settings-button" onClick={onAddNewOrder}><PackageCheck size={15} /> Add new order</button><button type="button" className="settings-button" onClick={onEndDelivery}>End Delivery</button></div>
           <div className="live-conditions"><Clock3 size={15} /><div><span>Live conditions</span><strong>All roads are clear, no obstacles reported.</strong></div><CheckCircle2 size={16} /></div>
         </div>
-        <button type="button" className="settings-button">View log details</button>
+        <button type="button" className="settings-button" onClick={onViewLogDetails}>View log details</button>
       </section>
     </section>
   )

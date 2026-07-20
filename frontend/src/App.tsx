@@ -3,6 +3,8 @@ import { Map, Navigation, PackageCheck, Route, Settings, TriangleAlert, Truck, t
 import InitialRoutingResults from './InitialRoutingResults'
 import LiveDeliveryAndRouting from './LiveDeliveryAndRouting'
 import RoutePlanner, { initialOrders, initialVehicles, type Order, type Vehicle } from './RoutePlanner'
+import RoutingDetailsModal from './RoutingDetailsModal'
+import { AddNewOrderModal, ChangeAddressModal, type NewOrderDraft } from './SupportingStates'
 
 type Screen = 'overview' | 'planner' | 'results' | 'live'
 
@@ -71,6 +73,9 @@ function App() {
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles)
   const [currentScreen, setCurrentScreen] = useState<Screen>('overview')
   const [isOptimizing, setIsOptimizing] = useState(false)
+  const [routingDetailsOpen, setRoutingDetailsOpen] = useState(false)
+  const [changeAddressOpen, setChangeAddressOpen] = useState(false)
+  const [addNewOrderOpen, setAddNewOrderOpen] = useState(false)
 
   // Page navigation remains simple local React state; no router is used.
   const handleStartRouting = () => {
@@ -91,6 +96,18 @@ function App() {
     }, 1000)
   }
 
+  const updateAffectedAddress = (address: string) => {
+    setOrders((currentOrders) => currentOrders.map((order) => order.id === 'N4' ? { ...order, address } : order))
+    setChangeAddressOpen(false)
+  }
+
+  const addLiveOrder = (draft: NewOrderDraft, shouldReRoute: boolean) => {
+    const nextNode = Math.max(0, ...orders.map((order) => Number(order.id.replace('N', '')) || 0)) + 1
+    setOrders((currentOrders) => [...currentOrders, { id: `N${nextNode}`, address: draft.address, weight: draft.weight, startTime: draft.startTime, endTime: draft.endTime }])
+    setAddNewOrderOpen(false)
+    if (shouldReRoute) runOptimization()
+  }
+
   return (
     <main className="app">
       <ApplicationHeader />
@@ -106,10 +123,13 @@ function App() {
 
       {currentScreen === 'planner' && <RoutePlanner orders={orders} setOrders={setOrders} vehicles={vehicles} setVehicles={setVehicles} isOptimizing={isOptimizing} onBack={() => setCurrentScreen('overview')} onOpenSettings={() => setSettingsOpen(true)} onRunOptimization={runOptimization} />}
       {currentScreen === 'results' && <InitialRoutingResults isOptimizing={isOptimizing} onEditSetup={() => setCurrentScreen('planner')} onReRoute={runOptimization} onStartOperational={() => setCurrentScreen('live')} />}
-      {currentScreen === 'live' && <LiveDeliveryAndRouting onEndDelivery={() => setCurrentScreen('overview')} />}
+      {currentScreen === 'live' && <LiveDeliveryAndRouting onChangeAddress={() => setChangeAddressOpen(true)} onAddNewOrder={() => setAddNewOrderOpen(true)} onEndDelivery={() => setCurrentScreen('overview')} onViewLogDetails={() => setRoutingDetailsOpen(true)} />}
 
       {isOptimizing && <OptimizationLoading />}
       {settingsOpen && <SettingsModal onSave={handleSaveSettings} onClose={() => setSettingsOpen(false)} />}
+      {routingDetailsOpen && <RoutingDetailsModal onClose={() => setRoutingDetailsOpen(false)} />}
+      {changeAddressOpen && <ChangeAddressModal onClose={() => setChangeAddressOpen(false)} onUpdate={updateAffectedAddress} />}
+      {addNewOrderOpen && <AddNewOrderModal onClose={() => setAddNewOrderOpen(false)} onAdd={addLiveOrder} />}
     </main>
   )
 }
