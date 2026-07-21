@@ -190,7 +190,6 @@ def run_gas_ibm(payload: dict) -> dict:
     energy_scale = suggest_energy_scale(
         ising, maximum_scale=payload.get("max_energy_scale", 1000)
     )
-    
 
     # A deterministic classical sample gives an initial discriminating
     # threshold without enumerating the exponential search space.

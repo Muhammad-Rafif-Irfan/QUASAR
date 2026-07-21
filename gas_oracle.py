@@ -11,9 +11,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from math import ceil, log2
-from typing import Iterable
-
 from qiskit import QuantumCircuit
 from qiskit.circuit.library import IntegerComparator, WeightedAdder
 

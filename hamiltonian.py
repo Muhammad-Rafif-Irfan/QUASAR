@@ -80,7 +80,7 @@ class _PauliBuilder:
     """
 
     def __init__(self, n_qubits: int):
-        self.n   = n_qubits
+        self.n = n_qubits
         self.d: dict[str, float] = {}
 
     def _I(self) -> str:
@@ -160,7 +160,7 @@ def _slack_qubit_index(
     """Qubit index for vehicle slack bit s[v,b] appended after route and delivery qubits."""
     route_qubits = N * P * K
     delivery_qubits = sum(delivery_bits) * P * K if delivery_bits is not None else 0
-    offset       = sum(slack_bits[:v])
+    offset = sum(slack_bits[:v])
     return route_qubits + delivery_qubits + offset + b
 
 
@@ -215,10 +215,10 @@ def _add_h_cost(
                     if i == j:
                         continue
                     d_ij = float(matrix[i][j])
-                    w    = alpha * d_ij + beta * (capacities[v] - demands[i]) ** 2
+                    w = alpha * d_ij + beta * (capacities[v] - demands[i]) ** 2
                     if demand_priority and demands[i] > 0:
                         w += gamma / float(demands[i])
-                    pb.xx(q(i, t, v, N, P, K), q(j, t+1, v, N, P, K), w)
+                    pb.xx(q(i, t, v, N, P, K), q(j, t + 1, v, N, P, K), w)
 
 
 def _add_h_depot(
@@ -234,7 +234,7 @@ def _add_h_depot(
     q = _qubit_index
     for v in range(K):
         depot = starting_nodes[v]
-        qa0   = q(depot, 0, v, N, P, K)
+        qa0 = q(depot, 0, v, N, P, K)
         qa_end = q(depot, P - 1, v, N, P, K)
         pb.add(pb._I(), 2.0 * lambda_D)
         pb.x(qa0, -lambda_D)
@@ -347,14 +347,14 @@ def _add_h_capacity(
     This enforces the capacity inequality by introducing slack bits for
     each vehicle. For CVRP, delivered[i,t,v] reduces to demand[i]·x[i,t,v].
     """
-    q       = _qubit_index
-    qy      = _delivery_qubit_index
-    sq      = _slack_qubit_index
+    q = _qubit_index
+    qy = _delivery_qubit_index
+    sq = _slack_qubit_index
     if delivery_bits is None:
         delivery_bits = [0] * N
 
     for v in range(K):
-        cap       = float(capacities[v])
+        cap = float(capacities[v])
         bit_width = slack_bits[v]
         slack_weights = [2**b for b in range(bit_width)]
 
@@ -416,7 +416,7 @@ def build_ising_cvrp(
     alpha:           float = 1.0,
     beta:            float = 0.5,
     lambda_scale:    float = 10.0,
-    demand_priority: bool  = False,
+    demand_priority: bool = False,
 ) -> SparsePauliOp:
     """
     Build Ising Hamiltonian for CVRP (no split delivery).
@@ -425,23 +425,23 @@ def build_ising_cvrp(
     Positions: t=0 is depot start, t=P-1 is depot return, P = N + 1.
     H = H_cost + λ_D·H_depot + λ_A·H_node + λ_B·H_position + λ_C·H_capacity
     """
-    N           = n_nodes
-    P           = N + 1
-    K           = n_vehicles
-    slack_bits  = _slack_bits(capacities)
-    n_qubits    = N * P * K + sum(slack_bits)
-    pb          = _PauliBuilder(n_qubits)
+    N = n_nodes
+    P = N + 1
+    K = n_vehicles
+    slack_bits = _slack_bits(capacities)
+    n_qubits = N * P * K + sum(slack_bits)
+    pb = _PauliBuilder(n_qubits)
 
-    max_d    = float(np.max(matrix)) if np.max(matrix) > 0 else 1.0
-    n_cost   = max(1, N * (N - 1) * (N - 1) * K)
+    max_d = float(np.max(matrix)) if np.max(matrix) > 0 else 1.0
+    n_cost = max(1, N * (N - 1) * (N - 1) * K)
     base_pen = max_d * n_cost * lambda_scale
     lambda_D = base_pen * 2.0   # depot constraint (hard)
     lambda_A = base_pen          # node constraint (hard)
     lambda_B = base_pen          # position constraint (hard)
     lambda_C = base_pen * 0.5   # capacity constraint (soft)
-    gamma    = alpha * max_d if demand_priority else 0.0
+    gamma = alpha * max_d if demand_priority else 0.0
 
-    q         = _qubit_index
+    q = _qubit_index
     depot_set = set(starting_nodes)
 
     # H_cost
@@ -487,7 +487,7 @@ def build_ising_sdvrp(
     alpha:           float = 1.0,
     beta:            float = 0.5,
     lambda_scale:    float = 10.0,
-    demand_priority: bool  = False,
+    demand_priority: bool = False,
 ) -> SparsePauliOp:
     """
     Build Ising Hamiltonian for SDVRP (split delivery allowed) with delivered
@@ -504,28 +504,27 @@ def build_ising_sdvrp(
       - total delivered per vehicle + slack = capacity
       - route shape, depot start/return, and slot conflicts
     """
-    N           = n_nodes
-    P           = N + 1
-    K           = n_vehicles
+    N = n_nodes
+    P = N + 1
+    K = n_vehicles
     delivery_bits = _delivery_bits(demands)
-    slack_bits   = _slack_bits(capacities)
+    slack_bits = _slack_bits(capacities)
     route_qubits = N * P * K
     delivery_qubits = sum(delivery_bits) * P * K
-    n_qubits    = route_qubits + delivery_qubits + sum(slack_bits)
-    pb          = _PauliBuilder(n_qubits)
+    n_qubits = route_qubits + delivery_qubits + sum(slack_bits)
+    pb = _PauliBuilder(n_qubits)
 
-    max_d    = float(np.max(matrix)) if np.max(matrix) > 0 else 1.0
-    n_cost   = max(1, N * (N - 1) * (N - 1) * K)
+    max_d = float(np.max(matrix)) if np.max(matrix) > 0 else 1.0
+    n_cost = max(1, N * (N - 1) * (N - 1) * K)
     base_pen = max_d * n_cost * lambda_scale
     lambda_D = base_pen * 2.0
     lambda_A = base_pen
     lambda_B = base_pen
     lambda_C = base_pen * 0.5
-    gamma    = alpha * max_d if demand_priority else 0.0
+    gamma = alpha * max_d if demand_priority else 0.0
 
-    q         = _qubit_index
-    qy        = _delivery_qubit_index
-    sq        = _slack_qubit_index
+    q = _qubit_index
+    qy = _delivery_qubit_index
     depot_set = set(starting_nodes)
 
     # Route cost
@@ -554,12 +553,12 @@ def build_ising_sdvrp(
     for i in range(N):
         if i in depot_set:
             continue
-        width    = delivery_bits[i]
+        width = delivery_bits[i]
         if width == 0:
             continue
         demand_i = float(demands[i])
-        weights  = [2**b for b in range(width)]
-        slots    = []
+        weights = [2**b for b in range(width)]
+        slots = []
         slot_wts = []
         for t in range(1, P - 1):
             for v in range(K):
@@ -599,7 +598,7 @@ def build_ising(
     alpha:           float = 1.0,
     beta:            float = 0.5,
     lambda_scale:    float = 10.0,
-    demand_priority: bool  = False,
+    demand_priority: bool = False,
 ) -> SparsePauliOp:
     """
     Auto-select CVRP or SDVRP Hamiltonian based on n_vehicles.
@@ -628,7 +627,7 @@ def normalize(ising_op: SparsePauliOp) -> tuple[SparsePauliOp, float]:
     normalized_op : SparsePauliOp
     max_coeff     : float — scale factor to restore original energy units
     """
-    coeffs    = np.array([float(np.real(op.coeffs[0])) for op in ising_op])
+    coeffs = np.array([float(np.real(op.coeffs[0])) for op in ising_op])
     max_coeff = float(np.max(np.abs(coeffs))) if len(coeffs) > 0 else 1.0
     if max_coeff > 0:
         return ising_op / max_coeff, max_coeff
@@ -670,10 +669,10 @@ def eval_bitstring(
     hterms    : list of (pauli_string, coefficient)
     n_qubits  : total number of qubits
     """
-    n      = n_qubits
+    n = n_qubits
     # spin[q] = +1 if bitstring[n-1-q]='0', -1 if '1'
-    spins  = {q: (1 - 2 * int(bitstring[n - 1 - q])) for q in range(n)}
-    val    = 0.0
+    spins = {q: (1 - 2 * int(bitstring[n - 1 - q])) for q in range(n)}
+    val = 0.0
     for pauli_str, coeff in hterms:
         # Qiskit big-endian: pauli_str[n-1-q] is the operator on qubit q
         nz = [(n - 1 - idx, p) for idx, p in enumerate(pauli_str) if p != "I"]
@@ -718,18 +717,19 @@ def decode_bitstring(
             f"Invalid bitstring length {n}; expected at least {route_qubits} for N={n_nodes}, K={n_vehicles}"
         )
 
-    def q(i, t, v): return i * P * K + t * K + v
+    def q(i, t, v):
+        return i * P * K + t * K + v
 
     # Parse x[i][t][v] from bitstring (big-endian: bit q → bitstring[n-1-q])
     x = {}
     for i in range(N):
         for t in range(P):
             for v in range(K):
-                idx       = q(i, t, v)
-                x[i,t,v]  = int(bitstring[n - 1 - idx])
+                idx = q(i, t, v)
+                x[i, t, v] = int(bitstring[n - 1 - idx])
 
     # Build routes: ordered list of nodes at each position per vehicle
-    routes     = {}
+    routes = {}
     assignment = {i: [] for i in range(N)}
     for v in range(K):
         route = []
@@ -810,7 +810,7 @@ def decode_bitstring(
 
     # Validate constraints
     violations = []
-    depot_set  = set(starting_nodes)
+    depot_set = set(starting_nodes)
 
     # Depot at position 0 and return at position P-1
     for v in range(K):
@@ -893,6 +893,6 @@ def compute_objective(
     total = 0.0
     for v_nodes in routes.values():
         for i in range(len(v_nodes) - 1):
-            a, b   = v_nodes[i], v_nodes[i + 1]
+            a, b = v_nodes[i], v_nodes[i + 1]
             total += float(matrix[a][b])
     return round(total, 6)

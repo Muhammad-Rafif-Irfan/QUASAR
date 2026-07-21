@@ -1,8 +1,9 @@
-name: Python smoke tests
+name: Quantum Unit Tests
 
 on:
-  pull_request:
   push:
+    branches: [main, "feature/*", "sdvrp_*"]
+  pull_request:
     branches: [main]
 
 permissions:
@@ -15,8 +16,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
+          cache: "pip"
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip numpy qiskit
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy qiskit
       - name: Run exhaustive small-instance and GAS oracle tests
         run: python -m unittest discover -s tests -v

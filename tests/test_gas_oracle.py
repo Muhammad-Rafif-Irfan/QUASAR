@@ -6,7 +6,7 @@ import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import SparsePauliOp, Statevector
 
-from core.gas_oracle import (
+from gas_oracle import (
     ThresholdOracleError,
     build_threshold_oracle,
     evaluate_ising_energy,

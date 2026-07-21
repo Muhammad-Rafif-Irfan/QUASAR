@@ -25,18 +25,18 @@ result = run_qaoa_ibm({
 
 import numpy as np
 import scipy.optimize
-from qiskit import QuantumCircuit
 from qiskit.circuit.library import qaoa_ansatz
 
 from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms, eval_bitstring
-from ibm_connection  import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
+from ibm_connection import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
+
 
 def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:
     """
     Decode bitstring and validate feasibility.
     Returns fields to be merged into the main result dict.
     """
-    decoded   = decode_bitstring(
+    decoded = decode_bitstring(
         bitstring,
         p["n_nodes"],
         p["n_vehicles"],
@@ -51,8 +51,6 @@ def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:
         "violations":  decoded["violations"],
         "route_cost":  objective,
     }
-
-
 
 
 def run_qaoa_ibm(payload: dict) -> dict:
@@ -70,11 +68,11 @@ def run_qaoa_ibm(payload: dict) -> dict:
     -------
     dict with bitstring, energy, cost_history, backend, job_ids, etc.
     """
-    p          = parse_payload(payload)
-    n_nodes    = p["n_nodes"]
+    p = parse_payload(payload)
+    n_nodes = p["n_nodes"]
     n_vehicles = p["n_vehicles"]
-    shots      = p["shots"]
-    reps       = p["p"]
+    shots = p["shots"]
+    reps = p["p"]
 
     # Build and normalize Hamiltonian
     ising_op = build_ising(
@@ -86,36 +84,36 @@ def run_qaoa_ibm(payload: dict) -> dict:
     ising_norm, max_c = normalize(ising_op)
 
     # Connect to IBM
-    backend   = get_backend(p["token"], p["backend_name"], n_qubits)
-    pm        = get_pass_manager(backend, p["optimization_level"])
+    backend = get_backend(p["token"], p["backend_name"], n_qubits)
+    pm = get_pass_manager(backend, p["optimization_level"])
     estimator = get_estimator(backend, p["resilience_level"], p["use_dd"])
-    sampler   = get_sampler(backend, p["use_dd"])
+    sampler = get_sampler(backend, p["use_dd"])
 
     # Build QAOA ansatz, transpile once to get layout
-    ansatz     = qaoa_ansatz(ising_norm, reps=reps, flatten=True)
+    ansatz = qaoa_ansatz(ising_norm, reps=reps, flatten=True)
     param_list = list(ansatz.parameters)
     # Transpile with placeholder parameters to get layout
     isa_ansatz = pm.run(ansatz)
-    isa_obs    = ising_norm.apply_layout(isa_ansatz.layout)
+    isa_obs = ising_norm.apply_layout(isa_ansatz.layout)
 
     cost_history: list[float] = []
-    job_ids:      list[str]   = []
+    job_ids:      list[str] = []
     n_evals = [0]
 
     def objective(params: np.ndarray) -> float:
         isa_circ = isa_ansatz.assign_parameters(params)
-        job      = estimator.run(pubs=[(isa_circ, [isa_obs])])
+        job = estimator.run(pubs=[(isa_circ, [isa_obs])])
         job_ids.append(job.job_id())
         # Optimizer works in normalized space; rescale for logging
         val_norm = float(job.result()[0].data.evs)
-        val      = val_norm * max_c
+        val = val_norm * max_c
         cost_history.append(val)
         n_evals[0] += 1
         print(f"  Eval {n_evals[0]}/{p['maxiter']}: energy = {val:.4f}")
         return val_norm  # return normalized value to optimizer
 
     print(f"[QAOA] p={reps}, maxiter={p['maxiter']} | {n_qubits} qubits | backend: {backend.name}")
-    x0  = np.random.default_rng(42).uniform(-np.pi, np.pi, len(param_list))
+    x0 = np.random.default_rng(42).uniform(-np.pi, np.pi, len(param_list))
     opt = scipy.optimize.minimize(
         objective, x0, method="COBYLA",
         options={"maxiter": p["maxiter"], "rhobeg": 0.5},
@@ -128,9 +126,9 @@ def run_qaoa_ibm(payload: dict) -> dict:
     bind_dict = dict(zip(isa_ansatz.parameters, opt.x))
     isa_final = isa_ansatz.assign_parameters(bind_dict)
     isa_final.measure_all()
-    job_samp  = sampler.run([(isa_final,)], shots=shots)
+    job_samp = sampler.run([(isa_final,)], shots=shots)
     job_ids.append(job_samp.job_id())
-    counts    = job_samp.result()[0].data.meas.get_counts()
+    counts = job_samp.result()[0].data.meas.get_counts()
 
     best_bs = None
     best_prob = 0.0

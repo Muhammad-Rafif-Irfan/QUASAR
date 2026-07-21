@@ -10,7 +10,7 @@ import unittest
 
 import numpy as np
 
-from core.gas_oracle import evaluate_ising_energy
+from gas_oracle import evaluate_ising_energy
 from hamiltonian import build_ising, decode_bitstring
 
 

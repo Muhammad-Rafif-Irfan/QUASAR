@@ -27,8 +27,9 @@ from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterVector
 from qiskit.circuit.library import StatePreparation
 
-from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms, eval_bitstring
-from ibm_connection  import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
+from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms
+from ibm_connection import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
+
 
 def apply_w_state(qc, qubits):
     n = len(qubits)
@@ -43,17 +44,18 @@ def apply_w_state(qc, qubits):
     state = np.zeros(2**n, dtype=complex)
 
     for i in range(n):
-        state[1 << i] = 1/np.sqrt(n)
+        state[1 << i] = 1 / np.sqrt(n)
 
     prep = StatePreparation(state)
     qc.compose(prep, qubits=qubits, inplace=True)
+
 
 def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:
     """
     Decode bitstring and validate feasibility.
     Returns fields to be merged into the main result dict.
     """
-    decoded   = decode_bitstring(
+    decoded = decode_bitstring(
         bitstring,
         p["n_nodes"],
         p["n_vehicles"],
@@ -68,8 +70,6 @@ def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:
         "violations":  decoded["violations"],
         "route_cost":  objective,
     }
-
-
 
 
 # ═════════════════════════════════════════════
@@ -88,14 +88,16 @@ def _build_circuit(
 
     Cost unitary   : e^{-iγ H_p} via RZ/RZZ gates
     """
-    n      = ising_op.num_qubits
-    N      = n_nodes
-    K      = n_vehicles
+    n = ising_op.num_qubits
+    N = n_nodes
+    K = n_vehicles
     gammas = ParameterVector('γ', p)
-    betas  = ParameterVector('β', p)
+    betas = ParameterVector('β', p)
 
-    P      = N + 1
-    def q(i, t, v): return i * P * K + t * K + v
+    P = N + 1
+
+    def q(i, t, v):
+        return i * P * K + t * K + v
 
     hterms = hp_terms(ising_op)
 
@@ -105,7 +107,7 @@ def _build_circuit(
     # ==========================================
     # Feasible Solution Initialization
     # ==========================================
-    
+
     # 1. Initialize the Depot from starting_nodes
     for v in range(K):
         depot = starting_nodes[v]
@@ -115,13 +117,13 @@ def _build_circuit(
     # 2. Initialize Customer Nodes (W-state)
     for i in range(N):
         if i in starting_nodes:
-            continue # Skip depots
-            
+            continue  # Skip depots
+
         node_qubits = []
         for v in range(K):
             for t in range(1, P - 1):
                 node_qubits.append(q(i, t, v))
-        
+
         if node_qubits:
             apply_w_state(qc, node_qubits)
     # ==========================================
@@ -144,26 +146,25 @@ def _build_circuit(
         #                qc.rxx(2 * betas[layer], q1, q2)
         #                qc.ryy(2 * betas[layer], q1, q2)
 
-      
         # FULL XY Mixer (For Routing Variables)
-        for i in range(N):  
+        for i in range(N):
             if i in starting_nodes:
-                continue # Skip depots for the mixer
-                
+                continue  # Skip depots for the mixer
+
             node_qubits = []
             for v in range(K):
                 for t in range(1, P - 1):
                     node_qubits.append(q(i, t, v))
-            
+
             num_q = len(node_qubits)
             for idx1 in range(num_q):
                 for idx2 in range(idx1 + 1, num_q):
                     q1 = node_qubits[idx1]
                     q2 = node_qubits[idx2]
-                    
+
                     qc.rxx(2 * betas[layer], q1, q2)
                     qc.ryy(2 * betas[layer], q1, q2)
-                    
+
         # ----------------------------------------------
         # RX Mixer (For Slack Variables)
         # ----------------------------------------------
@@ -174,7 +175,6 @@ def _build_circuit(
             qc.rx(2 * betas[layer], slack_q)
         # ----------------------------------------------
         # ----------------------------------------------
-
 
     return qc, list(gammas) + list(betas)
 
@@ -198,11 +198,11 @@ def run_qaoa_plus_ibm(payload: dict) -> dict:
     -------
     dict with bitstring, energy, cost_history, backend, job_ids, etc.
     """
-    p          = parse_payload(payload)
-    n_nodes    = p["n_nodes"]
+    p = parse_payload(payload)
+    n_nodes = p["n_nodes"]
     n_vehicles = p["n_vehicles"]
-    shots      = p["shots"]
-    reps       = p["p"]
+    shots = p["shots"]
+    reps = p["p"]
 
     # Build and normalize Hamiltonian
     ising_op = build_ising(
@@ -214,27 +214,27 @@ def run_qaoa_plus_ibm(payload: dict) -> dict:
     ising_norm, max_c = normalize(ising_op)
 
     # Connect to IBM
-    backend   = get_backend(p["token"], p["backend_name"], n_qubits)
-    pm        = get_pass_manager(backend, p["optimization_level"])
+    backend = get_backend(p["token"], p["backend_name"], n_qubits)
+    pm = get_pass_manager(backend, p["optimization_level"])
     estimator = get_estimator(backend, p["resilience_level"], p["use_dd"])
-    sampler   = get_sampler(backend, p["use_dd"])
+    sampler = get_sampler(backend, p["use_dd"])
 
     # Build circuit, transpile once to get layout
     ansatz, param_list = _build_circuit(ising_norm, reps, n_nodes, n_vehicles, p["starting_nodes"])
     isa_ansatz = pm.run(ansatz)
-    isa_obs    = ising_norm.apply_layout(isa_ansatz.layout)
+    isa_obs = ising_norm.apply_layout(isa_ansatz.layout)
 
     cost_history: list[float] = []
-    job_ids:      list[str]   = []
+    job_ids:      list[str] = []
     n_evals = [0]
 
     def objective(params: np.ndarray) -> float:
         bind_dict = dict(zip(isa_ansatz.parameters, params))
-        isa_circ  = isa_ansatz.assign_parameters(bind_dict)
-        job      = estimator.run(pubs=[(isa_circ, [isa_obs])])
+        isa_circ = isa_ansatz.assign_parameters(bind_dict)
+        job = estimator.run(pubs=[(isa_circ, [isa_obs])])
         job_ids.append(job.job_id())
         val_norm = float(job.result()[0].data.evs)
-        val      = val_norm * max_c
+        val = val_norm * max_c
         cost_history.append(val)
         n_evals[0] += 1
         print(f"  Eval {n_evals[0]}/{p['maxiter']}: energy = {val:.4f}")
@@ -242,13 +242,13 @@ def run_qaoa_plus_ibm(payload: dict) -> dict:
 
     print(f"[QAOA+] p={reps}, maxiter={p['maxiter']} | {n_qubits} qubits | backend: {backend.name}")
     x0 = np.concatenate([
-    np.full(reps, 0.40),   # gamma
-    np.full(reps, 0.20)    # beta
+        np.full(reps, 0.40),   # gamma
+        np.full(reps, 0.20)    # beta
     ])
     opt = scipy.optimize.minimize(
         objective, x0, method="COBYLA",
         options={"maxiter": p["maxiter"], "rhobeg": 0.1
-        })
+                 })
 
     matrix_orig = p["matrix"].copy()
 
@@ -257,15 +257,13 @@ def run_qaoa_plus_ibm(payload: dict) -> dict:
     bind_dict = dict(zip(isa_ansatz.parameters, opt.x))
     isa_final = isa_ansatz.assign_parameters(bind_dict)
     isa_final.measure_all()
-    job_samp  = sampler.run([(isa_final,)], shots=shots)
+    job_samp = sampler.run([(isa_final,)], shots=shots)
     job_ids.append(job_samp.job_id())
-    counts    = job_samp.result()[0].data.meas.get_counts()
+    counts = job_samp.result()[0].data.meas.get_counts()
     best_bs = None
     best_prob = 0.0
-    best_val = float('inf')
     best_objective = float("inf")
     for bs, cnt in counts.items():
-        val = eval_bitstring(bs, hp_terms(ising_norm), n_qubits) * max_c
         try:
             decoded = decode_bitstring(
                 bs,
@@ -282,7 +280,6 @@ def run_qaoa_plus_ibm(payload: dict) -> dict:
         if decoded["valid"] and objective is not None:
             if objective < best_objective:
                 best_objective = objective
-                best_val = val
                 best_bs = bs
                 best_prob = cnt / shots
     if best_bs is None:

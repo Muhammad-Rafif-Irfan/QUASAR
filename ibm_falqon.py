@@ -25,17 +25,18 @@ result = run_falqon_ibm({
 
 import numpy as np
 from collections import defaultdict
-from qiskit import QuantumCircuit, transpile
+from qiskit import QuantumCircuit
 
 from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms, eval_bitstring
-from ibm_connection  import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
+from ibm_connection import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
+
 
 def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:
     """
     Decode bitstring and validate feasibility.
     Returns fields to be merged into the main result dict.
     """
-    decoded   = decode_bitstring(
+    decoded = decode_bitstring(
         bitstring,
         p["n_nodes"],
         p["n_vehicles"],
@@ -50,8 +51,6 @@ def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:
         "violations":  decoded["violations"],
         "route_cost":  objective,
     }
-
-
 
 
 # ═════════════════════════════════════════════
@@ -111,14 +110,17 @@ def _group_commutator_terms(
             if len(nz) == 1:
                 idx, p = nz[0]
                 if p == "Z" and idx == j:
-                    new = ["I"] * n_qubits; new[j] = "Y"
+                    new = ["I"] * n_qubits
+                    new[j] = "Y"
                     key = "".join(new)
                     groups[j][key] = groups[j].get(key, 0.0) + 2.0 * coeff
             elif len(nz) == 2:
                 idxs = [i for i, _ in nz]
                 if j in idxs:
                     other = [i for i in idxs if i != j][0]
-                    new = ["I"] * n_qubits; new[j] = "Y"; new[other] = "Z"
+                    new = ["I"] * n_qubits
+                    new[j] = "Y"
+                    new[other] = "Z"
                     key = "".join(new)
                     groups[j][key] = groups[j].get(key, 0.0) + 2.0 * coeff
     return dict(groups)
@@ -138,11 +140,14 @@ def _commutator_circuit(
     rotation = {}
     for pauli_str in terms:
         for i, p in enumerate(pauli_str):
-            if p == "Y": rotation[i] = "Y"
-            elif p == "X" and i not in rotation: rotation[i] = "X"
+            if p == "Y":
+                rotation[i] = "Y"
+            elif p == "X" and i not in rotation:
+                rotation[i] = "X"
     for qubit, gate in rotation.items():
         if gate == "Y":
-            qc.sdg(qubit); qc.h(qubit)
+            qc.sdg(qubit)
+            qc.h(qubit)
         elif gate == "X":
             qc.h(qubit)
     qc.measure_all()
@@ -172,12 +177,12 @@ def run_falqon_ibm(payload: dict) -> dict:
     -------
     dict with bitstring, energy, betas, backend, job_ids, etc.
     """
-    p          = parse_payload(payload)
-    n_nodes    = p["n_nodes"]
+    p = parse_payload(payload)
+    n_nodes = p["n_nodes"]
     n_vehicles = p["n_vehicles"]
-    n_layers   = p["n_layers"]
-    dt         = p["dt"]
-    shots      = p["shots"]
+    n_layers = p["n_layers"]
+    dt = p["dt"]
+    shots = p["shots"]
 
     # Build and normalize Hamiltonian
     matrix_orig = p["matrix"].copy()
@@ -188,26 +193,26 @@ def run_falqon_ibm(payload: dict) -> dict:
     )
     n_qubits = ising_op.num_qubits
     ising_norm, max_c = normalize(ising_op)
-    hterms            = hp_terms(ising_norm)
-    comm_groups       = _group_commutator_terms(hterms, n_qubits)
+    hterms = hp_terms(ising_norm)
+    comm_groups = _group_commutator_terms(hterms, n_qubits)
 
     # Connect to IBM
-    backend   = get_backend(p["token"], p["backend_name"], n_qubits)
-    pm        = get_pass_manager(backend, p["optimization_level"])
-    sampler   = get_sampler(backend, p["use_dd"])
+    backend = get_backend(p["token"], p["backend_name"], n_qubits)
+    pm = get_pass_manager(backend, p["optimization_level"])
+    sampler = get_sampler(backend, p["use_dd"])
     estimator = get_estimator(backend, p["resilience_level"], p["use_dd"])
 
     # ISA observable: apply layout from first actual circuit (not dummy)
     # Build layer-1 circuit to get the correct transpiled layout
     _init_circuit = _build_circuit(n_qubits, hp_terms(ising_norm), [0.0], 1, dt, measure=False)
-    _isa_init     = pm.run(_init_circuit)
-    isa_obs       = ising_norm.apply_layout(_isa_init.layout)
+    _isa_init = pm.run(_init_circuit)
+    isa_obs = ising_norm.apply_layout(_isa_init.layout)
 
-    betas          = [0.0]
-    best_energy    = np.inf
-    best_bs        = "0" * n_qubits
-    best_prob      = 0.0
-    job_ids        = []
+    betas = [0.0]
+    best_energy = np.inf
+    best_bs = "0" * n_qubits
+    best_prob = 0.0
+    job_ids = []
     energy_history = []
 
     print(f"[FALQON] {n_layers} layers | {n_qubits} qubits | backend: {backend.name}")
@@ -216,31 +221,31 @@ def run_falqon_ibm(payload: dict) -> dict:
         print(f"  Layer {layer}/{n_layers}...")
 
         # Build circuit for this layer
-        qc        = _build_circuit(n_qubits, hterms, betas, layer, dt, measure=False)
-        isa_qc    = pm.run(qc)
+        qc = _build_circuit(n_qubits, hterms, betas, layer, dt, measure=False)
+        isa_qc = pm.run(qc)
 
         # ── ⟨H_p⟩ via Estimator ──
-        job_est   = estimator.run(pubs=[(isa_qc, [isa_obs])])
+        job_est = estimator.run(pubs=[(isa_qc, [isa_obs])])
         job_ids.append(job_est.job_id())
-        energy    = float(job_est.result()[0].data.evs) * max_c
+        energy = float(job_est.result()[0].data.evs) * max_c
         energy_history.append(energy)
         print(f"    ⟨H_p⟩ = {energy:.4f}")
 
         # ── A_k via grouped Sampler ──
         A_k = 0.0
         for y_qubit, terms in comm_groups.items():
-            comm_qc  = _commutator_circuit(qc, terms, n_qubits)
+            comm_qc = _commutator_circuit(qc, terms, n_qubits)
             isa_comm = pm.run(comm_qc)
             job_comm = sampler.run([(isa_comm,)], shots=shots)
             job_ids.append(job_comm.job_id())
             data_bin = job_comm.result()[0].data
-            register_name = list(data_bin.keys())[0] 
-            counts   = data_bin[register_name].get_counts()
-            total    = sum(counts.values())
+            register_name = list(data_bin.keys())[0]
+            counts = data_bin[register_name].get_counts()
+            total = sum(counts.values())
             for pauli_str, coeff in terms.items():
                 non_i = [i for i, pp in enumerate(pauli_str) if pp != "I"]
                 exp_p = sum(
-                    (1 - 2*(sum(int(bs[n_qubits-1-i]) for i in non_i) % 2))
+                    (1 - 2 * (sum(int(bs[n_qubits - 1 - i]) for i in non_i) % 2))
                     * cnt / total
                     for bs, cnt in counts.items()
                 )
@@ -252,13 +257,13 @@ def run_falqon_ibm(payload: dict) -> dict:
         # ── Sample bitstring if best layer ──
         if energy < best_energy:
             best_energy = energy
-            qc_meas     = _build_circuit(n_qubits, hterms, betas[:-1], layer, dt, measure=True)
-            isa_meas    = pm.run(qc_meas)
-            job_samp    = sampler.run([(isa_meas,)], shots=shots)
+            qc_meas = _build_circuit(n_qubits, hterms, betas[:-1], layer, dt, measure=True)
+            isa_meas = pm.run(qc_meas)
+            job_samp = sampler.run([(isa_meas,)], shots=shots)
             job_ids.append(job_samp.job_id())
             data_bin_samp = job_samp.result()[0].data
             reg_name_samp = list(data_bin_samp.keys())[0]
-            counts      = data_bin_samp[reg_name_samp].get_counts()
+            counts = data_bin_samp[reg_name_samp].get_counts()
             best_bs = None
             best_prob = 0.0
             best_val = float('inf')
