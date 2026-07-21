@@ -1,261 +1,315 @@
+"""Grover Adaptive Search (GAS) runner for QUASAR's diagonal SDVRP Hamiltonian.
+
+Unlike the previous implementation, this module uses a binary energy-threshold
+oracle.  It marks ``H(x) < threshold`` with a phase flip, uncomputes all
+arithmetic ancillas, and only accepts feasible decoded routes as incumbents.
 """
-ibm_gas.py — QUASAR GAS on IBM Quantum Hardware
-================================================
-Grover Adaptive Search (GAS) running directly on IBM QPU
-via qiskit_ibm_runtime.
 
-Iteratively tightens an energy threshold using Grover amplification,
-sampling low-energy states from the hardware.
+from __future__ import annotations
 
-Usage
------
-from ibm_gas import run_gas_ibm
-
-result = run_gas_ibm({
-    "matrix":         [[0,10],[10,0]],
-    "demands":        [0,3],
-    "capacities":     [5],
-    "starting_nodes": [0],
-    "iterations":     3,
-    "shots":          4096,
-    "token":          "YOUR_IBM_TOKEN",
-})
-"""
+from math import ceil, sqrt
 
 import numpy as np
 from qiskit import QuantumCircuit
 
-from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms, eval_bitstring
-from ibm_connection  import parse_payload, get_backend, get_pass_manager, get_sampler, best_bitstring
+from core.gas_oracle import (
+    ThresholdOracle,
+    ThresholdOracleError,
+    build_threshold_oracle,
+    evaluate_ising_energy,
+    suggest_energy_scale,
+)
+from hamiltonian import build_ising, compute_objective, decode_bitstring
+from ibm_connection import get_backend, get_pass_manager, get_sampler, parse_payload
 
-def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:
-    """
-    Decode bitstring and validate feasibility.
-    Returns fields to be merged into the main result dict.
-    """
-    decoded   = decode_bitstring(
+
+def _decode_result(bitstring: str, payload: dict, matrix: np.ndarray) -> dict:
+    decoded = decode_bitstring(
         bitstring,
-        p["n_nodes"],
-        p["n_vehicles"],
-        p["starting_nodes"],
-        np.array(p["demands"], dtype=float),
-        np.array(p["capacities"], dtype=float),
+        payload["n_nodes"],
+        payload["n_vehicles"],
+        payload["starting_nodes"],
+        np.array(payload["demands"], dtype=float),
+        np.array(payload["capacities"], dtype=float),
     )
-    objective = compute_objective(decoded["routes"], matrix) if decoded["valid"] else None
     return {
-        "routes":      decoded["routes"],
-        "valid":       decoded["valid"],
-        "violations":  decoded["violations"],
-        "route_cost":  objective,
+        "routes": decoded["routes"],
+        "valid": decoded["valid"],
+        "violations": decoded["violations"],
+        "route_cost": compute_objective(decoded["routes"], matrix) if decoded["valid"] else None,
     }
 
 
+def _diffuser(n_problem_qubits: int) -> QuantumCircuit:
+    """Return Grover's inversion-about-the-mean on problem qubits only."""
+    circuit = QuantumCircuit(n_problem_qubits, name="diffuser")
+    if n_problem_qubits == 1:
+        circuit.x(0)
+        return circuit
+
+    circuit.h(range(n_problem_qubits))
+    circuit.x(range(n_problem_qubits))
+    circuit.h(n_problem_qubits - 1)
+    circuit.mcx(list(range(n_problem_qubits - 1)), n_problem_qubits - 1)
+    circuit.h(n_problem_qubits - 1)
+    circuit.x(range(n_problem_qubits))
+    circuit.h(range(n_problem_qubits))
+    return circuit
 
 
-# ═════════════════════════════════════════════
-# ENERGY EVALUATION
-# ═════════════════════════════════════════════
+def _build_grover_circuit(oracle: ThresholdOracle, grover_steps: int) -> QuantumCircuit:
+    """Prepare a uniform problem state and apply the threshold oracle/diffuser."""
+    if grover_steps < 0:
+        raise ValueError("grover_steps must not be negative.")
 
-def _eval_energy(bs: str, hterms: list[tuple[str, float]]) -> float:
+    n_problem = oracle.resources.problem_qubits
+    total_qubits = oracle.resources.total_qubits
+    circuit = QuantumCircuit(total_qubits, n_problem)
+    circuit.h(range(n_problem))
+    diffuser = _diffuser(n_problem)
+
+    for _ in range(grover_steps):
+        circuit.compose(oracle.circuit, qubits=range(total_qubits), inplace=True)
+        circuit.compose(diffuser, qubits=range(n_problem), inplace=True)
+
+    # Ancillas are deliberately not measured.  They must be back at |0> after
+    # the oracle so the sampler bitstrings remain compatible with the decoder.
+    circuit.measure(range(n_problem), range(n_problem))
+    return circuit
+
+
+def _counts_from_result(result) -> dict[str, int]:
+    """Read a SamplerV2 result without assuming a particular classical register name."""
+    data = result[0].data
+    for attribute in dir(data):
+        register = getattr(data, attribute, None)
+        if register is not None and hasattr(register, "get_counts"):
+            return register.get_counts()
+    raise RuntimeError("Sampler result contains no classical counts register.")
+
+
+def _best_feasible_measurement(
+    counts: dict[str, int],
+    payload: dict,
+    ising_operator: object,
+) -> tuple[str | None, float, float]:
+    """Return the feasible sampled state with the lowest Hamiltonian energy."""
+    total_shots = sum(counts.values())
+    best_bitstring: str | None = None
+    best_energy = float("inf")
+    best_probability = 0.0
+
+    for bitstring, count in counts.items():
+        try:
+            decoded = decode_bitstring(
+                bitstring,
+                payload["n_nodes"],
+                payload["n_vehicles"],
+                payload["starting_nodes"],
+                np.array(payload["demands"], dtype=float),
+                np.array(payload["capacities"], dtype=float),
+            )
+        except ValueError:
+            continue
+
+        if not decoded["valid"]:
+            continue
+        energy = evaluate_ising_energy(ising_operator, bitstring)
+        if energy < best_energy:
+            best_bitstring = bitstring
+            best_energy = energy
+            best_probability = count / total_shots
+
+    return best_bitstring, best_energy, best_probability
+
+
+def _initial_threshold(
+    ising_operator: object,
+    n_problem_qubits: int,
+    energy_scale: int,
+    random: np.random.Generator,
+) -> float:
+    """Choose a sampled, integer-grid threshold that marks some but not all samples.
+
+    This samples bitstrings directly.  It never constructs an array of all
+    ``2**n`` states, which is essential once the routing encoding grows.
     """
-    Evaluate energy of a bitstring via Pauli Z eigenvalues.
-    Uses the same convention as hamiltonian_new.eval_bitstring.
-    """
-    return eval_bitstring(bs, hterms, len(bs))
+    sample_size = min(500, 1 << min(n_problem_qubits, 20))
+    if n_problem_qubits <= 20:
+        selected = random.choice(1 << n_problem_qubits, size=sample_size, replace=False)
+        bitstrings = [format(int(index), f"0{n_problem_qubits}b") for index in selected]
+    else:
+        bits = random.integers(0, 2, size=(sample_size, n_problem_qubits), dtype=np.int8)
+        bitstrings = ["".join(str(int(bit)) for bit in row) for row in bits]
 
+    sampled_integer_energies = sorted({
+        int(round(evaluate_ising_energy(ising_operator, bitstring) * energy_scale))
+        for bitstring in bitstrings
+    })
+    if len(sampled_integer_energies) < 2:
+        raise RuntimeError(
+            "Unable to derive a discriminating initial GAS threshold from the sampled energies."
+        )
 
-# ═════════════════════════════════════════════
-# CIRCUIT BUILDER
-# ═════════════════════════════════════════════
+    cutoff = max(1, min(len(sampled_integer_energies) - 1, ceil(0.30 * len(sampled_integer_energies))))
+    return sampled_integer_energies[cutoff] / energy_scale
 
-def _phase_oracle_for_threshold(
-    n_qubits:  int,
-    hterms:    list[tuple[str, float]],
-    threshold: float,
-) -> QuantumCircuit:
-    """
-    Build a phase oracle that marks basis states with energy < threshold.
-
-    Kenneth's review (poin 6): filtering Hamiltonian terms by coefficient
-    is NOT equivalent to marking basis states whose total objective is below
-    the threshold. The correct approach evaluates the full energy of each
-    basis state.
-
-    Implementation: diagonal phase kickback via Pauli Z rotations.
-    For each basis state |x⟩, the accumulated phase is proportional to
-    its Hamiltonian energy E(x) = Σ coeff·z_i·z_j...
-    States with E(x) < threshold accumulate a negative phase → amplified.
-
-    Gate decomposition:
-      e^{-i·θ·Z_q} → RZ(2θ, q)
-      e^{-i·θ·ZZ_{q1,q2}} → RZZ(2θ, q1, q2)
-    where θ = -π·coeff / (2·|E_max|) to scale phases appropriately.
-    """
-    qc = QuantumCircuit(n_qubits, name="phase_oracle")
-    # Scale factor: map energy range to [0, π] phase range
-    # States below threshold get phase > π/2 → constructive interference
-    scale = np.pi / max(abs(threshold), 1e-6) if threshold != 0 else np.pi
-    for pauli_str, coeff in hterms:
-        # Qiskit big-endian: string index n-1-q corresponds to qubit q
-        nz = [(n_qubits - 1 - idx, p)
-              for idx, p in enumerate(pauli_str) if p != "I"]
-        if len(nz) == 1:
-            qc.rz(-2.0 * scale * coeff, nz[0][0])
-        elif len(nz) == 2:
-            qc.rzz(-2.0 * scale * coeff, nz[0][0], nz[1][0])
-    return qc
-
-
-def _diffuser(n_qubits: int) -> QuantumCircuit:
-    """
-    Grover diffuser: 2|s⟩⟨s| - I  (inversion about the mean).
-    H^n X^n H_{n-1} MCX H_{n-1} X^n H^n
-    """
-    qc = QuantumCircuit(n_qubits, name="diffuser")
-    qc.h(range(n_qubits))
-    qc.x(range(n_qubits))
-    qc.h(n_qubits - 1)
-    qc.mcx(list(range(n_qubits - 1)), n_qubits - 1)
-    qc.h(n_qubits - 1)
-    qc.x(range(n_qubits))
-    qc.h(range(n_qubits))
-    return qc
-
-
-def _build_grover_circuit(
-    n_qubits:  int,
-    hterms:    list[tuple[str, float]],
-    threshold: float,
-    k_steps:   int,
-) -> QuantumCircuit:
-    """
-    Build full Grover circuit: |+⟩^n → [oracle → diffuser]^k → measure.
-
-    The oracle applies phase proportional to Hamiltonian energy,
-    such that states below threshold accumulate more phase and are
-    amplified by the diffuser.
-    """
-    oracle   = _phase_oracle_for_threshold(n_qubits, hterms, threshold)
-    diffuser = _diffuser(n_qubits)
-
-    qc = QuantumCircuit(n_qubits)
-    qc.h(range(n_qubits))  # Initial state: |+⟩^n
-    for _ in range(k_steps):
-        qc.compose(oracle,   inplace=True)
-        qc.compose(diffuser, inplace=True)
-    qc.measure_all()
-    return qc
-
-
-# ═════════════════════════════════════════════
-# MAIN RUNNER
-# ═════════════════════════════════════════════
 
 def run_gas_ibm(payload: dict) -> dict:
+    """Run adaptive GAS against IBM Runtime using a true energy-threshold oracle.
+
+    The threshold predicate is defined over the complete penalized SDVRP
+    Hamiltonian.  Measured candidates are independently decoded and validated
+    before they are allowed to replace the incumbent solution.
     """
-    Run Grover Adaptive Search on IBM Quantum hardware.
+    params = parse_payload(payload)
+    shots = params["shots"]
+    iterations = params["iterations"]
+    if shots < 1:
+        raise ValueError("shots must be at least 1.")
+    if iterations < 1:
+        raise ValueError("iterations must be at least 1.")
 
-    Each iteration = 1 Sampler job to IBM QPU.
-    Total jobs = iterations (much fewer than QAOA with maxiter evaluations).
-
-    Parameters
-    ----------
-    payload : dict with keys from I/O CONTRACT
-
-    Returns
-    -------
-    dict with bitstring, energy, threshold, backend, job_ids, etc.
-    """
-    p          = parse_payload(payload)
-    n_nodes    = p["n_nodes"]
-    n_vehicles = p["n_vehicles"]
-    shots      = p["shots"]
-    iterations = p["iterations"]
-
-    # Build and normalize Hamiltonian
-    matrix_orig = p["matrix"].copy()
-    ising_op = build_ising(
-        p["matrix"], p["demands"], p["capacities"],
-        n_nodes, n_vehicles, p["starting_nodes"],
-        p["alpha"], p["beta"], p["lambda_scale"], p["demand_priority"],
+    matrix_original = params["matrix"].copy()
+    ising = build_ising(
+        params["matrix"],
+        params["demands"],
+        params["capacities"],
+        params["n_nodes"],
+        params["n_vehicles"],
+        params["starting_nodes"],
+        params["alpha"],
+        params["beta"],
+        params["lambda_scale"],
+        params["demand_priority"],
     )
-    n_qubits = ising_op.num_qubits
-    ising_norm, max_c = normalize(ising_op)
-    hterms            = hp_terms(ising_norm)
+    # The comparator works in the original Hamiltonian units.  Normalising
+    # first can introduce long rational coefficients that require a huge
+    # fixed-point scale and silently change the threshold predicate.
+    n_problem_qubits = ising.num_qubits
+    energy_scale = suggest_energy_scale(
+        ising, maximum_scale=params["max_energy_scale"]
+    )
 
-    # Connect to IBM
-    backend = get_backend(p["token"], p["backend_name"], n_qubits)
-    pm      = get_pass_manager(backend, p["optimization_level"])
-    sampler = get_sampler(backend, p["use_dd"])
+    # A deterministic classical sample gives an initial discriminating
+    # threshold without enumerating the exponential search space.
+    random = np.random.default_rng(42)
+    threshold = _initial_threshold(ising, n_problem_qubits, energy_scale, random)
 
-    # Initial threshold from random sampling (no hardware needed)
-    rng             = np.random.default_rng(42)
-    n_samples       = min(500, 2**n_qubits)
-    sample_indices  = rng.choice(2**n_qubits, size=n_samples, replace=False)
-    sample_energies = [
-        _eval_energy(format(int(idx), f"0{n_qubits}b"), hterms)
-        for idx in sample_indices
-    ]
-    threshold = float(np.percentile(sample_energies, 30))
-    best_idx  = int(np.argmin(sample_energies))
-    best_val  = float(sample_energies[best_idx]) * max_c
-    best_bs   = format(int(sample_indices[best_idx]), f"0{n_qubits}b")
-    best_prob = 0.0
+    try:
+        initial_oracle = build_threshold_oracle(
+            ising, threshold, energy_scale=energy_scale
+        )
+    except ThresholdOracleError as error:
+        raise RuntimeError(f"Unable to construct an initial GAS threshold oracle: {error}") from error
 
-    cost_history: list[float] = []
-    job_ids:      list[str]   = []
+    backend = get_backend(
+        params["token"], params["backend_name"], initial_oracle.resources.total_qubits
+    )
+    if backend.num_qubits < initial_oracle.resources.total_qubits:
+        raise RuntimeError("Selected backend cannot accommodate GAS work qubits.")
 
-    print(f"[GAS] {iterations} iterations | {n_qubits} qubits | backend: {backend.name}")
-    print(f"  Initial threshold: {threshold:.4f} | best energy: {best_val:.4f}")
+    pass_manager = get_pass_manager(backend, params["optimization_level"])
+    sampler = get_sampler(backend, params["use_dd"])
 
-    for it in range(iterations):
-        # Grover steps decrease with iteration (more targeted search)
-        k = max(1, int(np.sqrt(2**n_qubits) / (it + 1)))
-        print(f"  Iteration {it+1}/{iterations} (k={k} Grover steps)...")
+    incumbent_bitstring: str | None = None
+    incumbent_energy = float("inf")
+    incumbent_probability = 0.0
+    job_ids: list[str] = []
+    energy_history: list[float] = []
+    grover_history: list[int] = []
+    transpiled_depths: list[int] = []
+    resource_summary = initial_oracle.resources
 
-        qc      = _build_grover_circuit(n_qubits, hterms, threshold, k)
-        isa_qc  = pm.run(qc)
-        job     = sampler.run([(isa_qc,)], shots=shots)
+    # Dürr-Høyer-style adaptive range.  A random Grover count avoids the
+    # fixed sqrt(2**n)/(iteration+1) schedule that can repeatedly overshoot.
+    growth_factor = 6.0 / 5.0
+    grover_range = 1.0
+    maximum_range = sqrt(2**n_problem_qubits)
+
+    print(
+        f"[GAS] {iterations} adaptive iterations | {n_problem_qubits} problem qubits | "
+        f"{resource_summary.total_qubits} total circuit qubits | backend: {backend.name}"
+    )
+
+    for iteration in range(iterations):
+        try:
+            oracle = build_threshold_oracle(ising, threshold, energy_scale=energy_scale)
+        except ThresholdOracleError:
+            # No strictly better state is representable under this threshold.
+            break
+
+        grover_steps = int(random.integers(0, max(1, ceil(grover_range))))
+        grover_history.append(grover_steps)
+        circuit = _build_grover_circuit(oracle, grover_steps)
+        isa_circuit = pass_manager.run(circuit)
+
+        if isa_circuit.num_qubits > backend.num_qubits:
+            raise RuntimeError(
+                f"Transpiled GAS circuit needs {isa_circuit.num_qubits} qubits, "
+                f"but backend {backend.name} has {backend.num_qubits}."
+            )
+        circuit_depth = isa_circuit.depth()
+        if circuit_depth > params["max_circuit_depth"]:
+            raise RuntimeError(
+                f"Transpiled GAS circuit depth is {circuit_depth}, exceeding the configured "
+                f"limit of {params['max_circuit_depth']}. Refuse to submit this IBM job."
+            )
+        transpiled_depths.append(circuit_depth)
+
+        job = sampler.run([(isa_circuit,)], shots=shots)
         job_ids.append(job.job_id())
-        counts  = job.result()[0].data.meas.get_counts()
-        total   = sum(counts.values())
+        counts = _counts_from_result(job.result())
 
-        # Evaluate top-10 measured bitstrings
-        top_bs = sorted(counts, key=counts.get, reverse=True)[:10]
-        for bs in top_bs:
-            val = _eval_energy(bs, hterms) * max_c
-            cost_history.append(val)
-            try:
-                decoded = decode_bitstring(
-                    bs,
-                    n_nodes,
-                    n_vehicles,
-                    p["starting_nodes"],
-                    np.array(p["demands"], dtype=float),
-                    np.array(p["capacities"], dtype=float),
-                )
-            except ValueError:
-                continue
-            if decoded["valid"] and val < best_val:
-                best_val  = val
-                best_bs   = bs
-                best_prob = counts[bs] / total
-                threshold = _eval_energy(bs, hterms) * 0.99
-                print(f"    New best: energy={val:.4f}, prob={best_prob:.3f}")
+        candidate_bitstring, candidate_energy, candidate_probability = _best_feasible_measurement(
+            counts, params, ising
+        )
+        if candidate_bitstring is not None:
+            energy_history.append(candidate_energy)
+
+        if candidate_bitstring is not None and candidate_energy < incumbent_energy:
+            incumbent_bitstring = candidate_bitstring
+            incumbent_energy = candidate_energy
+            incumbent_probability = candidate_probability
+            threshold = candidate_energy
+            grover_range = 1.0
+            print(
+                f"  Iteration {iteration + 1}: improved feasible energy "
+                f"to {incumbent_energy:.6f}"
+            )
+        else:
+            grover_range = min(growth_factor * grover_range, maximum_range)
+
+    if incumbent_bitstring is None:
+        raise RuntimeError(
+            "GAS completed without measuring a feasible SDVRP state. "
+            "Increase shots/iterations or adjust the penalty Hamiltonian."
+        )
 
     return {
-        "bitstring":    best_bs,
-        "n_qubits":     n_qubits,
-        "n_nodes":      n_nodes,
-        "n_vehicles":   n_vehicles,
-        "energy":       round(best_val, 6),
-        "n_evals":      iterations,
-        "threshold":    round(threshold * max_c, 6),
-        "cost_history": [round(c, 4) for c in cost_history],
-        "backend":      backend.name,
-        "shots":        shots,
-        "algorithm":    "GAS",
-        "job_ids":      job_ids,
-        "success_prob": round(best_prob, 4),
-        **_decode_result(best_bs, p, matrix_orig),
+        "bitstring": incumbent_bitstring,
+        "n_qubits": n_problem_qubits,
+        "n_nodes": params["n_nodes"],
+        "n_vehicles": params["n_vehicles"],
+        "energy": round(incumbent_energy, 6),
+        "threshold": round(threshold, 6),
+        "n_evals": len(job_ids),
+        "cost_history": [round(value, 6) for value in energy_history],
+        "backend": backend.name,
+        "shots": shots,
+        "algorithm": "GAS",
+        "job_ids": job_ids,
+        "success_prob": round(incumbent_probability, 4),
+        "grover_steps": grover_history,
+        "max_transpiled_depth": max(transpiled_depths, default=0),
+        "energy_scale": energy_scale,
+        "oracle_resources": {
+            "problem_qubits": resource_summary.problem_qubits,
+            "term_ancillas": resource_summary.term_ancillas,
+            "accumulator_qubits": resource_summary.accumulator_qubits,
+            "arithmetic_ancillas": resource_summary.arithmetic_ancillas,
+            "comparator_ancillas": resource_summary.comparator_ancillas,
+            "total_qubits": resource_summary.total_qubits,
+        },
+        **_decode_result(incumbent_bitstring, params, matrix_original),
     }
