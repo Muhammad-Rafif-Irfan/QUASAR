@@ -81,6 +81,7 @@ def _build_circuit(
     p:          int,
     n_nodes:    int,
     n_vehicles: int,
+    starting_nodes: list,
 ) -> tuple[object, list]:
     """
     Build QAOA+ circuit with full XY mixer.
@@ -105,14 +106,17 @@ def _build_circuit(
     # Feasible Solution Initialization
     # ==========================================
     
-    # 1. Initialize the Depot (Node 0)
-    # The vehicle MUST start (t=0) and end (t=P-1) at the depot.
+    # 1. Initialize the Depot from starting_nodes
     for v in range(K):
-        qc.x(q(0, 0, v))          # Start at depot
-        qc.x(q(0, P - 1, v))      # End at depot
+        depot = starting_nodes[v]
+        qc.x(q(depot, 0, v))          # Start at depot
+        qc.x(q(depot, P - 1, v))      # End at depot
 
     # 2. Initialize Customer Nodes (W-state)
-    for i in range(1, N):
+    for i in range(N):
+        if i in starting_nodes:
+            continue # Skip depots
+            
         node_qubits = []
         for v in range(K):
             for t in range(1, P - 1):
@@ -142,7 +146,10 @@ def _build_circuit(
 
       
         # FULL XY Mixer (For Routing Variables)
-        for i in range(1, N):  
+        for i in range(N):  
+            if i in starting_nodes:
+                continue # Skip depots for the mixer
+                
             node_qubits = []
             for v in range(K):
                 for t in range(1, P - 1):
@@ -213,7 +220,7 @@ def run_qaoa_plus_ibm(payload: dict) -> dict:
     sampler   = get_sampler(backend, p["use_dd"])
 
     # Build circuit, transpile once to get layout
-    ansatz, param_list = _build_circuit(ising_norm, reps, n_nodes, n_vehicles)
+    ansatz, param_list = _build_circuit(ising_norm, reps, n_nodes, n_vehicles, p["starting_nodes"])
     isa_ansatz = pm.run(ansatz)
     isa_obs    = ising_norm.apply_layout(isa_ansatz.layout)
 

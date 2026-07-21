@@ -76,7 +76,7 @@ def benchmark_small_cvrp():
         "alpha": 10.0,
         "beta": 10.0,
         "lambda_scale": 10.0,
-        "demand_priority": 10.0
+        "demand_priority": False
     }
 
     algorithms = [

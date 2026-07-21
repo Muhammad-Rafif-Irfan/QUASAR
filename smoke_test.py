@@ -48,7 +48,7 @@ def get_base_payload():
         "alpha": 10.0,
         "beta": 10.0,
         "lambda_scale": 10.0,
-        "demand_priority": 10.0
+        "demand_priority": False
     }
 
 @pytest.fixture
