@@ -280,27 +280,6 @@ def run_falqon_ibm(payload: dict) -> dict:
                     best_bs = bs
                     best_prob = cnt / shots
             if best_bs is None:
-                best_bs = None
-            best_prob = 0.0
-            best_val = float('inf')
-            for bs, cnt in counts.items():
-                val = eval_bitstring(bs, hterms, n_qubits) * max_c
-                try:
-                    decoded = decode_bitstring(
-                        bs,
-                        n_nodes,
-                        n_vehicles,
-                        p["starting_nodes"],
-                        np.array(p["demands"], dtype=float),
-                        np.array(p["capacities"], dtype=float),
-                    )
-                except ValueError:
-                    continue
-                if decoded["valid"] and val < best_val:
-                    best_val = val
-                    best_bs = bs
-                    best_prob = cnt / shots
-            if best_bs is None:
                 best_bs, best_prob = best_bitstring(counts, shots)
 
     return {

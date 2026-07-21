@@ -12,7 +12,7 @@ from math import ceil, sqrt
 import numpy as np
 from qiskit import QuantumCircuit
 
-from core.gas_oracle import (
+from gas_oracle import (
     ThresholdOracle,
     ThresholdOracleError,
     build_threshold_oracle,
@@ -188,8 +188,9 @@ def run_gas_ibm(payload: dict) -> dict:
     # fixed-point scale and silently change the threshold predicate.
     n_problem_qubits = ising.num_qubits
     energy_scale = suggest_energy_scale(
-        ising, maximum_scale=params["max_energy_scale"]
+        ising, maximum_scale=payload.get("max_energy_scale", 1000)
     )
+    
 
     # A deterministic classical sample gives an initial discriminating
     # threshold without enumerating the exponential search space.

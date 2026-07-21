@@ -28,7 +28,7 @@ import scipy.optimize
 from qiskit import QuantumCircuit
 from qiskit.circuit.library import qaoa_ansatz
 
-from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective
+from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms, eval_bitstring
 from ibm_connection  import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
 
 def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:
@@ -95,23 +95,15 @@ def run_qaoa_ibm(payload: dict) -> dict:
     ansatz     = qaoa_ansatz(ising_norm, reps=reps, flatten=True)
     param_list = list(ansatz.parameters)
     # Transpile with placeholder parameters to get layout
-    import numpy as _np
-    _x0        = _np.zeros(len(param_list))
-    _bound0    = ansatz.assign_parameters(dict(zip(param_list, _x0)))
-    _isa_bound = pm.run(_bound0)
-    isa_obs    = ising_norm.apply_layout(_isa_bound.layout)
-    # Store layout for reuse — avoid re-transpiling each evaluation
-    _layout    = _isa_bound.layout
+    isa_ansatz = pm.run(ansatz)
+    isa_obs    = ising_norm.apply_layout(isa_ansatz.layout)
 
     cost_history: list[float] = []
     job_ids:      list[str]   = []
     n_evals = [0]
 
     def objective(params: np.ndarray) -> float:
-        bound    = ansatz.assign_parameters(dict(zip(param_list, params)))
-        # Apply stored layout instead of full re-transpile
-        isa_circ = pm.run(bound)
-        isa_circ.layout = _layout
+        isa_circ = isa_ansatz.assign_parameters(params)
         job      = estimator.run(pubs=[(isa_circ, [isa_obs])])
         job_ids.append(job.job_id())
         # Optimizer works in normalized space; rescale for logging
@@ -133,9 +125,9 @@ def run_qaoa_ibm(payload: dict) -> dict:
 
     # Final sampling with optimal parameters
     print("  Final sampling...")
-    bound_final = ansatz.assign_parameters(dict(zip(param_list, opt.x)))
-    bound_final.measure_all()
-    isa_final = pm.run(bound_final)
+    bind_dict = dict(zip(isa_ansatz.parameters, opt.x))
+    isa_final = isa_ansatz.assign_parameters(bind_dict)
+    isa_final.measure_all()
     job_samp  = sampler.run([(isa_final,)], shots=shots)
     job_ids.append(job_samp.job_id())
     counts    = job_samp.result()[0].data.meas.get_counts()
