@@ -12,15 +12,15 @@ from math import ceil, sqrt
 import numpy as np
 from qiskit import QuantumCircuit
 
-from gas_oracle import (
+from .gas_oracle import (
     ThresholdOracle,
     ThresholdOracleError,
     build_threshold_oracle,
     evaluate_ising_energy,
     suggest_energy_scale,
 )
-from hamiltonian import build_ising, compute_objective, decode_bitstring
-from ibm_connection import get_backend, get_pass_manager, get_sampler, parse_payload
+from .hamiltonian import build_ising, compute_objective, decode_bitstring
+from .ibm_connection import get_backend, get_pass_manager, get_sampler, parse_payload
 
 
 def _decode_result(bitstring: str, payload: dict, matrix: np.ndarray) -> dict:

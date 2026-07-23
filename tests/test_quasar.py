@@ -4,7 +4,7 @@ import json
 import numpy as np
 
 # Ensure app package is in path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import engine, SessionLocal, Base
 from app.models import BenchmarkRun, QuantumJob, BenchmarkResult

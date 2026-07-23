@@ -9,7 +9,7 @@ hardware to minimize job queue submissions.
 
 Usage
 -----
-from ibm_qaoa import run_qaoa_ibm
+from research.ibm_sdvrp.ibm_qaoa import run_qaoa_ibm
 
 result = run_qaoa_ibm({
     "matrix":         [[0,10],[10,0]],
@@ -27,8 +27,8 @@ import numpy as np
 import scipy.optimize
 from qiskit.circuit.library import qaoa_ansatz
 
-from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms, eval_bitstring
-from ibm_connection import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
+from .hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms, eval_bitstring
+from .ibm_connection import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
 
 
 def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:

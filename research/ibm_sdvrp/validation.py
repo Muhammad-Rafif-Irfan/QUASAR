@@ -1,16 +1,16 @@
 import time
 
 
-import ibm_qaoa
-import ibm_qaoa_plus
-import ibm_falqon
-import ibm_gas
+from . import ibm_qaoa
+from . import ibm_qaoa_plus
+from . import ibm_falqon
+from . import ibm_gas
 
 
-from ibm_qaoa import run_qaoa_ibm
-from ibm_qaoa_plus import run_qaoa_plus_ibm
-from ibm_falqon import run_falqon_ibm
-from ibm_gas import run_gas_ibm
+from .ibm_qaoa import run_qaoa_ibm
+from .ibm_qaoa_plus import run_qaoa_plus_ibm
+from .ibm_falqon import run_falqon_ibm
+from .ibm_gas import run_gas_ibm
 
 
 # ==========================================

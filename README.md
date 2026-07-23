@@ -56,35 +56,18 @@ Unlike standard rigid quantum solutions, QUASAR implements a **Hybrid Asynchrono
 
 ```
 QUASAR/
-├── app/
-│   ├── __init__.py
-│   ├── database.py              # SQLAlchemy database engine and session
-│   ├── main.py                  # FastAPI controllers, routes & middleware wiring
-│   ├── models.py                # Database tracing tables
-│   ├── schemas.py               # Pydantic validation schemas
-│   ├── middleware/              # Security & Observability middleware stack
-│   │   ├── __init__.py
-│   │   ├── security.py          # OWASP headers, request size limit, error sanitization
-│   │   ├── rate_limiter.py      # Sliding window rate limiter (per-endpoint burst control)
-│   │   └── observability.py     # Structured logging, correlation ID, perf monitoring
-│   └── services/
-│       ├── __init__.py
-│       ├── quantum_driver.py    # Qiskit QAOA / QAI-HOBO loops & OR-Tools solver
-│       └── routing.py           # OSMnx snapping, distance matrix, and Folium maps
-├── core/                        # Core quantum algorithm (wired into FastAPI pipeline)
-│   ├── base_solver.py           # BaseQuantumSolver ABC + tour validation
-│   └── solver_qai_hobo.py       # QAI + HOBO solver used by quantum_driver
-├── services/
-│   └── classical_solver.py      # ORToolsSolver warm-start used by quantum_driver
-├── .github/
-│   └── workflows/
-│       └── ci.yml               # CI/CD pipeline (lint, test, security, docker)
-├── Dockerfile                   # Multi-stage production container
-├── docker-compose.yml           # Container orchestration with resource limits
-├── .dockerignore                # Build context exclusions
-├── requirements.txt             # Project requirements
-├── test_quasar.py               # Complete test verification suite
-└── README.md                    # Project documentation
+├── app/                      # FastAPI API (production)
+├── core/                     # QAI-HOBO solver (wired into API)
+├── services/                 # OR-Tools classical solver
+├── frontend/                 # React + Vite UI
+├── research/ibm_sdvrp/       # Experimental IBM SDVRP runners (not in API image)
+├── research/archive/         # Legacy scratch scripts
+├── tests/                    # Unit + integration tests
+├── docs/                     # Design / quantum review notes
+├── scripts/dev.ps1|.sh       # Local uvicorn + frontend launcher
+├── Dockerfile                # API image
+├── docker-compose.yml        # API + frontend stack
+└── requirements.txt
 ```
 
 ---
@@ -128,11 +111,14 @@ Client Request → ErrorSanitization → SecurityHeaders → RequestSizeLimit
 
 ### Quick Start with Docker Compose:
 ```bash
-# Build and run (production mode)
+# Build and run API + frontend
 docker compose up --build -d
 
+# Frontend → http://localhost:8080
+# API docs  → http://localhost:8000/docs
+
 # View logs
-docker compose logs -f quasar-api
+docker compose logs -f quasar-api quasar-frontend
 
 # Stop
 docker compose down
@@ -202,37 +188,51 @@ GET /health → { status, database, quantum_backend, environment }
 
 ## 🚀 Getting Started
 
-### 1. Installation
-Clone the repository and install the production dependencies within a virtual environment:
+### Option A — Local (uvicorn + frontend)
 
 ```bash
-# Create and activate virtual environment
+# Windows
+.\scripts\dev.ps1
+
+# Linux / macOS
+bash scripts/dev.sh
+```
+
+- API: http://127.0.0.1:8000/docs
+- Frontend: http://127.0.0.1:5173 (Vite proxies `/api` → backend)
+
+API only: `.\scripts\dev.ps1 -SkipFrontend` or `SKIP_FRONTEND=1 bash scripts/dev.sh`
+
+### Option B — Docker Compose (API + frontend)
+
+```bash
+docker compose up --build
+```
+
+- Frontend (nginx): http://localhost:8080
+- API direct: http://localhost:8000/docs
+
+### Manual API (without script)
+
+```bash
 python -m venv .venv
-.venv\Scripts\activate      # On Windows
-source .venv/bin/activate    # On Linux/macOS
-
-# Install dependencies
+.venv\Scripts\activate      # Windows
+# source .venv/bin/activate  # Linux/macOS
 pip install -r requirements.txt
-```
 
-### 2. Configure Environment Variables
-Create a `.env` file in the root directory (ignored by git) or export your IBM Quantum token:
-```bash
-export IBM_QUANTUM_TOKEN="your_ibm_quantum_api_key_here"
-export QUASAR_ENV="development"          # Enables verbose logging
-export ALLOWED_ORIGINS="http://localhost:3000,http://localhost:5173"
-```
-
-### 3. Launching the Server
-Spin up the Uvicorn ASGI server:
-```bash
+set QUASAR_ENV=development
+set ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 4. Running the Verification Suite
-Execute the automated test script to verify database migrations, tour validation, fallbacks, and classical-quantum optimization routines:
+Optional env: `IBM_QUANTUM_TOKEN` (omit → local simulator).
+
+### Tests
+
 ```bash
-python test_quasar.py
+python -m compileall -q app core services research tests
+python -m unittest discover -s tests -v
+python tests/test_quasar.py
 ```
 
 ---

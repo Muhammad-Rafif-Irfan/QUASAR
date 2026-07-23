@@ -1,9 +1,10 @@
 # Experimental IBM SDVRP / CVRP modules
 
-The files `hamiltonian.py`, `ibm_connection.py`, `ibm_qaoa.py`,
-`ibm_qaoa_plus.py`, `ibm_falqon.py`, `ibm_gas.py`, and `gas_oracle.py` are
-research modules from the quantum-algorithm workstream. They are intentionally
-not wired into the FastAPI production pipeline yet.
+The package `research/ibm_sdvrp/` (`hamiltonian`, `ibm_connection`,
+`ibm_qaoa`, `ibm_qaoa_plus`, `ibm_falqon`, `ibm_gas`, `gas_oracle`,
+`validation`, smoke helpers) holds research modules from the
+quantum-algorithm workstream. They are intentionally not wired into the
+FastAPI production pipeline yet.
 
 ## Security
 

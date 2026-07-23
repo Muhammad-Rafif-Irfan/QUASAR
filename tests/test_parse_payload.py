@@ -2,7 +2,7 @@
 
 import unittest
 
-from ibm_connection import parse_payload
+from research.ibm_sdvrp.ibm_connection import parse_payload
 
 
 class ParsePayloadTests(unittest.TestCase):

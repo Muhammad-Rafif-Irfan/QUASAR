@@ -39,11 +39,17 @@ docker-compose.yml
 
 # Documentation (not needed at runtime)
 README.md
+docs/
+research/
 note.txt
 
 # Tests (not needed in production image)
 test_*.py
 tests/
 
+# Frontend (built in its own image)
+frontend/
+
 # CI/CD
 .github/
+scripts/

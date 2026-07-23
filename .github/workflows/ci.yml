@@ -48,7 +48,8 @@ jobs:
       - name: Run Flake8 (code style)
         run: >
           flake8 app/ core/ services/
-          ibm_connection.py smoke_test.py tests/
+          research/ibm_sdvrp/ibm_connection.py
+          research/ibm_sdvrp/smoke_test.py tests/
           --max-line-length=120 --ignore=E501,W503
 
       - name: Run Bandit (security lint)
@@ -75,11 +76,16 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Compile all Python packages
+        run: >
+          python -m compileall -q
+          app core services research tests
+
       - name: Run quantum unit tests
         run: python -m unittest discover -s tests -v
 
       - name: Run QUASAR verification suite
-        run: python test_quasar.py
+        run: python tests/test_quasar.py
         env:
           QUASAR_ENV: testing
 
@@ -119,11 +125,20 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
+      - name: Build API Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: false
           tags: quasar-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: false
+          tags: quasar-frontend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

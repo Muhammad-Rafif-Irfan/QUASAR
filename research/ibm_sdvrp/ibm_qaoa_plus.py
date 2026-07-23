@@ -7,7 +7,7 @@ running directly on IBM QPU via qiskit_ibm_runtime.
 
 Usage
 -----
-from ibm_qaoa_plus import run_qaoa_plus_ibm
+from research.ibm_sdvrp.ibm_qaoa_plus import run_qaoa_plus_ibm
 
 result = run_qaoa_plus_ibm({
     "matrix":         [[0,10],[10,0]],
@@ -27,8 +27,8 @@ from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterVector
 from qiskit.circuit.library import StatePreparation
 
-from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms
-from ibm_connection import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
+from .hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms
+from .ibm_connection import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
 
 
 def apply_w_state(qc, qubits):

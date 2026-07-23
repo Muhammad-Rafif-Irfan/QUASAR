@@ -8,14 +8,14 @@ import pytest
 
 qiskit_aer = pytest.importorskip("qiskit_aer")
 
-import ibm_falqon  # noqa: E402
-import ibm_gas  # noqa: E402
-import ibm_qaoa  # noqa: E402
-import ibm_qaoa_plus  # noqa: E402
-from ibm_falqon import run_falqon_ibm  # noqa: E402
-from ibm_gas import run_gas_ibm  # noqa: E402
-from ibm_qaoa import run_qaoa_ibm  # noqa: E402
-from ibm_qaoa_plus import run_qaoa_plus_ibm  # noqa: E402
+from . import ibm_falqon  # noqa: E402
+from . import ibm_gas  # noqa: E402
+from . import ibm_qaoa  # noqa: E402
+from . import ibm_qaoa_plus  # noqa: E402
+from .ibm_falqon import run_falqon_ibm  # noqa: E402
+from .ibm_gas import run_gas_ibm  # noqa: E402
+from .ibm_qaoa import run_qaoa_ibm  # noqa: E402
+from .ibm_qaoa_plus import run_qaoa_plus_ibm  # noqa: E402
 from qiskit.transpiler.preset_passmanagers import (  # noqa: E402
     generate_preset_pass_manager,
 )

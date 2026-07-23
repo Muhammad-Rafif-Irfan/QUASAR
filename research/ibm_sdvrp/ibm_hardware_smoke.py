@@ -6,10 +6,10 @@ the normal CI suite. Set IBM_QUANTUM_TOKEN explicitly before running it.
 
 import os
 
-from ibm_falqon import run_falqon_ibm
-from ibm_gas import run_gas_ibm
-from ibm_qaoa import run_qaoa_ibm
-from ibm_qaoa_plus import run_qaoa_plus_ibm
+from .ibm_falqon import run_falqon_ibm
+from .ibm_gas import run_gas_ibm
+from .ibm_qaoa import run_qaoa_ibm
+from .ibm_qaoa_plus import run_qaoa_plus_ibm
 
 
 def main() -> None:

@@ -9,7 +9,7 @@ Sequential job submission — one set of circuits per layer.
 
 Usage
 -----
-from ibm_falqon import run_falqon_ibm
+from research.ibm_sdvrp.ibm_falqon import run_falqon_ibm
 
 result = run_falqon_ibm({
     "matrix":         [[0,10],[10,0]],
@@ -27,8 +27,8 @@ import numpy as np
 from collections import defaultdict
 from qiskit import QuantumCircuit
 
-from hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms, eval_bitstring
-from ibm_connection import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
+from .hamiltonian import build_ising, normalize, decode_bitstring, compute_objective, hp_terms, eval_bitstring
+from .ibm_connection import parse_payload, get_backend, get_pass_manager, get_sampler, get_estimator, best_bitstring
 
 
 def _decode_result(bitstring: str, p: dict, matrix: np.ndarray) -> dict:

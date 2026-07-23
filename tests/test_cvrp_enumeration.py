@@ -10,8 +10,8 @@ import unittest
 
 import numpy as np
 
-from gas_oracle import evaluate_ising_energy
-from hamiltonian import build_ising, decode_bitstring
+from research.ibm_sdvrp.gas_oracle import evaluate_ising_energy
+from research.ibm_sdvrp.hamiltonian import build_ising, decode_bitstring
 
 
 def _feasible_states(matrix: np.ndarray, demands: np.ndarray, capacity: float):
