@@ -63,8 +63,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
             response.headers["Pragma"] = "no-cache"
 
-        # Remove server identification header
-        response.headers.pop("server", None)
+        # Remove server identification header (MutableHeaders has no pop())
+        if "server" in response.headers:
+            del response.headers["server"]
 
         return response
 
