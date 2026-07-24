@@ -1,6 +1,6 @@
 import { useState, useCallback, type FormEvent } from 'react'
 import { Map, Navigation, PackageCheck, Route, Settings, TriangleAlert, Truck, type LucideIcon } from 'lucide-react'
-import InitialRoutingResults from './InitialRoutingResults'
+import InitialRoutingResults, { type QuantumJob } from './InitialRoutingResults'
 import LiveDeliveryAndRouting from './LiveDeliveryAndRouting'
 import RoutePlanner, { initialOrders, initialVehicles, type Order, type Vehicle } from './RoutePlanner'
 import RoutingDetailsModal from './RoutingDetailsModal'
@@ -164,7 +164,7 @@ function OptimizationLoading({ solverLabel }: { solverLabel: string }) {
       <div>
         <Route size={20} />
         <strong>Optimizing routes...</strong>
-        <span>Running {solverLabel}</span>
+        <span>Running {solverLabel}. Waiting for verified API results; no simulated fallback is shown.</span>
       </div>
     </div>
   )
@@ -181,6 +181,7 @@ function App() {
   const [changeAddressOpen, setChangeAddressOpen] = useState(false)
   const [addNewOrderOpen, setAddNewOrderOpen] = useState(false)
   const [comparisonRows, setComparisonRows] = useState<ComparisonRow[]>([])
+  const [quantumJobs, setQuantumJobs] = useState<QuantumJob[]>([])
   const [optimizeError, setOptimizeError] = useState<string | null>(null)
 
   const { depot, stops, truckRoutes, totalDistance, addStop, addStopAuto } = useRouteSimulation()
@@ -235,6 +236,13 @@ function App() {
             is_valid: boolean
             approximation_ratio?: number | null
           }>
+          quantum_jobs?: Array<{
+            job_id: string
+            algorithm: string
+            backend_name: string
+            status: string
+            qpu_time_seconds?: number | null
+          }>
         }
         if (statusBody.status === 'FAILED') {
           throw new Error(statusBody.error_message || 'Optimization failed')
@@ -248,6 +256,13 @@ function App() {
             approximationRatio: row.approximation_ratio ?? null,
           }))
           setComparisonRows(rows)
+          setQuantumJobs((statusBody.quantum_jobs || []).map((job) => ({
+            jobId: job.job_id,
+            algorithm: job.algorithm,
+            backendName: job.backend_name,
+            status: job.status,
+            qpuTimeSeconds: job.qpu_time_seconds ?? null,
+          })))
           completed = true
           break
         }
@@ -257,26 +272,9 @@ function App() {
       }
       setCurrentScreen('results')
     } catch (error) {
-      // Offline / mock fallback so the UI still demos comparison labels.
-      const mockRows: ComparisonRow[] = solver.algorithms.map((algo, index) => {
-        const labels: Record<string, string> = {
-          nearest_neighbor: 'Nearest Neighbor',
-          or_tools: 'OR-Tools',
-          qaoa: 'QUBO+QAOA',
-          qai_hobo: 'QAI+HOBO',
-        }
-        const base = totalDistance || 12000
-        return {
-          algorithm: labels[algo] || algo,
-          distanceMeters: Math.round(base * (1 + index * 0.04)),
-          executionTimeMs: 40 + index * 120,
-          isValid: true,
-          approximationRatio: index === 0 ? 1 : Number((1 + index * 0.04).toFixed(3)),
-        }
-      })
-      setComparisonRows(mockRows)
-      setOptimizeError(error instanceof Error ? error.message : 'Optimization unavailable — showing mock comparison')
-      setCurrentScreen('results')
+      setComparisonRows([])
+      setQuantumJobs([])
+      setOptimizeError(error instanceof Error ? `${error.message}. No benchmark result was created.` : 'Optimization unavailable. No benchmark result was created.')
     } finally {
       setIsOptimizing(false)
     }
@@ -438,6 +436,7 @@ function App() {
           onBack={() => setCurrentScreen('overview')}
           onOpenSettings={() => setSettingsOpen(true)}
           onRunOptimization={() => { void runOptimization() }}
+          optimizeError={optimizeError}
         />
       )}
       {currentScreen === 'results' && (
@@ -452,6 +451,7 @@ function App() {
           totalDistance={totalDistance}
           solverLabel={selectedSolver.label}
           comparisonRows={comparisonRows}
+          quantumJobs={quantumJobs}
           optimizeError={optimizeError}
         />
       )}

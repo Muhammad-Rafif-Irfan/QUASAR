@@ -177,6 +177,13 @@ button { cursor: pointer; }
 .comparison-row .is-valid { color: #15803d; font-weight: 600; }
 .comparison-row .is-invalid { color: #b91c1c; font-weight: 600; }
 .optimize-warning { margin: 0 0 12px; padding: 10px 12px; border-radius: 6px; background: #fff7ed; color: #9a3412; font-size: 12px; }
+.planner-optimize-warning { grid-column: 1 / -1; margin: 0; }
+.quantum-evidence-panel { margin-bottom: 16px; }
+.quantum-evidence-copy { margin: 0 0 10px; color: #64748b; font-size: 12px; }
+.quantum-job-list { display: grid; gap: 0; border-top: 1px solid #e2e8f0; }
+.quantum-job { display: grid; grid-template-columns: 1.1fr 1.4fr .8fr 1.4fr 1fr; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; font-size: 12px; }
+.quantum-job strong { color: #0f172a; }
+.quantum-job code { overflow: hidden; color: #475569; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .routing-details-comparison { margin-top: 14px; }
 .routing-details-comparison .comparison-head,
 .routing-details-comparison .comparison-row { grid-template-columns: 1.4fr 1fr 1fr; }

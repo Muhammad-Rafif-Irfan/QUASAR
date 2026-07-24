@@ -9,6 +9,14 @@ export type ComparisonRow = {
   approximationRatio: number | null
 }
 
+export type QuantumJob = {
+  jobId: string
+  algorithm: string
+  backendName: string
+  status: string
+  qpuTimeSeconds: number | null
+}
+
 type InitialRoutingResultsProps = {
   onEditSetup: () => void
   onReRoute: () => void
@@ -20,6 +28,7 @@ type InitialRoutingResultsProps = {
   totalDistance: number
   solverLabel: string
   comparisonRows: ComparisonRow[]
+  quantumJobs: QuantumJob[]
   optimizeError: string | null
 }
 
@@ -34,6 +43,7 @@ function InitialRoutingResults({
   totalDistance,
   solverLabel,
   comparisonRows,
+  quantumJobs,
   optimizeError,
 }: InitialRoutingResultsProps) {
   return (
@@ -72,6 +82,29 @@ function InitialRoutingResults({
                 <span>{row.executionTimeMs.toFixed(0)} ms</span>
                 <span>{row.approximationRatio == null ? '—' : row.approximationRatio.toFixed(3)}</span>
                 <span className={row.isValid ? 'is-valid' : 'is-invalid'}>{row.isValid ? 'Yes' : 'No'}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {quantumJobs.length > 0 && (
+        <section className="panel quantum-evidence-panel" aria-label="Quantum execution evidence">
+          <div className="panel-heading">
+            <div>
+              <p className="section-label">Execution evidence</p>
+              <h2>Quantum job trace</h2>
+            </div>
+          </div>
+          <p className="quantum-evidence-copy">Recorded jobs from this run. Simulator and hardware runs are shown exactly as reported by the API.</p>
+          <div className="quantum-job-list">
+            {quantumJobs.map((job) => (
+              <div className="quantum-job" key={`${job.algorithm}-${job.jobId}`}>
+                <strong>{job.algorithm}</strong>
+                <span>{job.backendName}</span>
+                <span className={job.status === 'COMPLETED' ? 'is-valid' : 'is-invalid'}>{job.status}</span>
+                <code>{job.jobId}</code>
+                <span>{job.qpuTimeSeconds == null ? 'QPU time unavailable' : `${job.qpuTimeSeconds.toFixed(3)} QPU s`}</span>
               </div>
             ))}
           </div>

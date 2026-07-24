@@ -48,7 +48,7 @@ COPY services/ ./services/
 COPY requirements.txt .
 
 # Create necessary directories with correct ownership
-RUN mkdir -p /app/static/maps /app/cache && \
+RUN mkdir -p /app/data /app/static/maps /app/cache && \
     chown -R quasar:quasar /app
 
 # Switch to non-root user
@@ -71,12 +71,12 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 EXPOSE 8000
 
 # Production ASGI server with sensible defaults:
-# - 4 workers for multi-core utilization
-# - 120s timeout for quantum pipeline execution (QPU queue can be slow)
+# - one worker avoids SQLite write contention during demo background jobs
+# - 120s keep-alive timeout for client polling
 # - Access log disabled (handled by structured logging middleware)
 CMD ["uvicorn", "app.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
-     "--workers", "4", \
+     "--workers", "1", \
      "--timeout-keep-alive", "120", \
      "--no-access-log"]

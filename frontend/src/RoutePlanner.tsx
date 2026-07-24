@@ -27,6 +27,7 @@ type RoutePlannerProps = {
   onBack: () => void
   onOpenSettings: () => void
   onRunOptimization: () => void
+  optimizeError: string | null
 }
 
 export const initialOrders: Order[] = [
@@ -52,6 +53,7 @@ function RoutePlanner({
   onBack,
   onOpenSettings,
   onRunOptimization,
+  optimizeError,
 }: RoutePlannerProps) {
   const totalDemand = orders.reduce((total, order) => total + (Number(order.weight) || 0), 0)
   const totalCapacity = vehicles.reduce((total, vehicle) => total + (Number(vehicle.capacity) || 0), 0)
@@ -216,6 +218,7 @@ function RoutePlanner({
         </div>
 
         <div className="planner-footer-actions">
+          {optimizeError && <p className="optimize-warning planner-optimize-warning" role="alert">{optimizeError}</p>}
           <button type="button" className="settings-button" onClick={onBack}><ArrowLeft size={16} /> Back</button>
           <button type="button" className="route-action" onClick={onRunOptimization} disabled={isOptimizing}>
             {isOptimizing ? 'Optimizing routes...' : 'Run Optimization'}

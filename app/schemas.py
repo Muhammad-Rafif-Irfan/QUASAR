@@ -1,24 +1,52 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional
+import os
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+MAX_OPTIMIZATION_STOPS = max(1, int(os.environ.get("MAX_OPTIMIZATION_STOPS", "5")))
+ALLOWED_ALGORITHMS = {"nearest_neighbor", "or_tools", "qaoa", "qai_hobo"}
 
 
 class Location(BaseModel):
-    name: str = Field(..., example="Pelabuhan")
-    lat: float = Field(..., example=16.0650)
-    lon: float = Field(..., example=108.2200)
+    name: str = Field(..., min_length=1, max_length=120, example="Pelabuhan")
+    lat: float = Field(..., ge=-90, le=90, example=16.0650)
+    lon: float = Field(..., ge=-180, le=180, example=108.2200)
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("name must not be blank")
+        return normalized
 
 
 class OptimizeRequest(BaseModel):
     depot: Location
-    stops: List[Location] = Field(..., min_items=1)
+    stops: List[Location] = Field(..., min_length=1, max_length=MAX_OPTIMIZATION_STOPS)
     # Optional solver selection for comparison runs.
     # Allowed: nearest_neighbor, or_tools, qaoa, qai_hobo
     # Default runs classical + quantum suite for side-by-side comparison.
     algorithms: Optional[List[str]] = Field(
         default=None,
+        max_length=len(ALLOWED_ALGORITHMS),
         example=["nearest_neighbor", "or_tools", "qaoa", "qai_hobo"],
     )
+
+    @field_validator("algorithms")
+    @classmethod
+    def algorithms_must_be_known_and_unique(cls, values: Optional[List[str]]) -> Optional[List[str]]:
+        if values is None:
+            return values
+        normalized = [value.strip().lower() for value in values]
+        unknown = set(normalized) - ALLOWED_ALGORITHMS
+        if unknown:
+            raise ValueError(f"unsupported algorithms: {', '.join(sorted(unknown))}")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("algorithms must not contain duplicates")
+        return normalized
 
 
 class OptimizeResponse(BaseModel):
@@ -37,9 +65,7 @@ class BenchmarkResultSchema(BaseModel):
     execution_time_ms: float
     created_at: datetime
 
-    class Config:
-        orm_mode = True
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class QuantumJobSchema(BaseModel):
@@ -50,9 +76,7 @@ class QuantumJobSchema(BaseModel):
     qpu_time_seconds: Optional[float] = None
     created_at: datetime
 
-    class Config:
-        orm_mode = True
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RunStatusResponse(BaseModel):
@@ -65,12 +89,10 @@ class RunStatusResponse(BaseModel):
     depot_lat: float
     depot_lon: float
     stops_count: int
-    results: List[BenchmarkResultSchema] = []
-    quantum_jobs: List[QuantumJobSchema] = []
+    results: List[BenchmarkResultSchema] = Field(default_factory=list)
+    quantum_jobs: List[QuantumJobSchema] = Field(default_factory=list)
 
-    class Config:
-        orm_mode = True
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InspectPipelineStage(BaseModel):

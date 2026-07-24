@@ -102,7 +102,10 @@ Client Request → ErrorSanitization → SecurityHeaders → RequestSizeLimit
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate limit window duration |
 | `OPTIMIZE_BURST_LIMIT` | `5` | Max optimization requests per window |
 | `MAX_REQUEST_BODY_KB` | `512` | Maximum request body size in KB |
-| `ALLOWED_ORIGINS` | `*` | Comma-separated CORS origins |
+| `MAX_OPTIMIZATION_STOPS` | `5` | Maximum stops per API run; protects local quantum simulation memory |
+| `DATABASE_URL` | `sqlite:///./data/quasar.db` | SQLAlchemy database URL |
+| `ALLOWED_ORIGINS` | Local frontend origins | Comma-separated CORS origins |
+| `TRUST_PROXY_HEADERS` | `false` | Set only behind a trusted reverse proxy to honor `X-Forwarded-For` |
 | `LOG_LEVEL` | `INFO` | Logging verbosity |
 
 ---

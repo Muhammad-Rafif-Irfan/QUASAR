@@ -80,7 +80,14 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         # Only check for methods that carry a body
         if request.method in ("POST", "PUT", "PATCH"):
             content_length = request.headers.get("content-length")
-            if content_length and int(content_length) > MAX_REQUEST_BODY_SIZE:
+            try:
+                declared_size = int(content_length) if content_length else None
+            except ValueError:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"detail": "Invalid Content-Length header."},
+                )
+            if declared_size is not None and declared_size > MAX_REQUEST_BODY_SIZE:
                 return JSONResponse(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                     content={

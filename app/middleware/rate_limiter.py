@@ -12,6 +12,7 @@ Author: Trịnh Hoàng Tú (System Architecture & Security Hardening)
 
 import os
 import time
+import threading
 from collections import defaultdict
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -28,6 +29,7 @@ RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60"
 # Burst limit for optimization endpoint (expensive operations)
 OPTIMIZE_BURST_LIMIT = int(os.environ.get("OPTIMIZE_BURST_LIMIT", "5"))
 OPTIMIZE_BURST_WINDOW = int(os.environ.get("OPTIMIZE_BURST_WINDOW", "60"))
+TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "false").lower() == "true"
 
 
 class SlidingWindowRateLimiter:
@@ -41,6 +43,8 @@ class SlidingWindowRateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self._requests: dict[str, list[float]] = defaultdict(list)
+        self._lock = threading.Lock()
+        self._last_cleanup = 0.0
 
     def is_allowed(self, client_id: str) -> tuple[bool, dict]:
         """
@@ -49,44 +53,49 @@ class SlidingWindowRateLimiter:
         Returns:
             (allowed: bool, metadata: dict with remaining/reset info)
         """
-        now = time.time()
-        window_start = now - self.window_seconds
+        with self._lock:
+            now = time.time()
+            window_start = now - self.window_seconds
+            if now - self._last_cleanup >= self.window_seconds:
+                stale_keys = [
+                    key for key, timestamps in self._requests.items()
+                    if not timestamps or timestamps[-1] < window_start
+                ]
+                for key in stale_keys:
+                    del self._requests[key]
+                self._last_cleanup = now
+            self._requests[client_id] = [
+                ts for ts in self._requests[client_id] if ts > window_start
+            ]
+            current_count = len(self._requests[client_id])
 
-        # Prune expired entries
-        self._requests[client_id] = [
-            ts for ts in self._requests[client_id] if ts > window_start
-        ]
+            if current_count >= self.max_requests:
+                oldest_in_window = self._requests[client_id][0] if self._requests[client_id] else now
+                reset_after = int(oldest_in_window + self.window_seconds - now) + 1
+                return False, {
+                    "remaining": 0,
+                    "reset_after_seconds": reset_after,
+                    "limit": self.max_requests,
+                }
 
-        current_count = len(self._requests[client_id])
-
-        if current_count >= self.max_requests:
-            # Calculate reset time
-            oldest_in_window = self._requests[client_id][0] if self._requests[client_id] else now
-            reset_after = int(oldest_in_window + self.window_seconds - now) + 1
-            return False, {
-                "remaining": 0,
-                "reset_after_seconds": reset_after,
+            self._requests[client_id].append(now)
+            return True, {
+                "remaining": self.max_requests - current_count - 1,
+                "reset_after_seconds": self.window_seconds,
                 "limit": self.max_requests,
             }
 
-        # Allow and record
-        self._requests[client_id].append(now)
-        return True, {
-            "remaining": self.max_requests - current_count - 1,
-            "reset_after_seconds": self.window_seconds,
-            "limit": self.max_requests,
-        }
-
     def cleanup(self):
         """Remove stale entries to prevent memory leaks in long-running processes."""
-        now = time.time()
-        window_start = now - self.window_seconds
-        stale_keys = [
-            k for k, v in self._requests.items()
-            if not v or v[-1] < window_start
-        ]
-        for k in stale_keys:
-            del self._requests[k]
+        with self._lock:
+            now = time.time()
+            window_start = now - self.window_seconds
+            stale_keys = [
+                k for k, v in self._requests.items()
+                if not v or v[-1] < window_start
+            ]
+            for k in stale_keys:
+                del self._requests[k]
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +109,7 @@ def _get_client_ip(request: Request) -> str:
     """
     Extract the real client IP, respecting X-Forwarded-For behind reverse proxies.
     """
-    forwarded = request.headers.get("x-forwarded-for")
+    forwarded = request.headers.get("x-forwarded-for") if TRUST_PROXY_HEADERS else None
     if forwarded:
         # First IP in the chain is the original client
         return forwarded.split(",")[0].strip()
@@ -126,6 +135,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client_ip = _get_client_ip(request)
+        global_meta = None
 
         # Stricter rate limit for optimization endpoint
         if request.url.path == "/api/v1/optimize" and request.method == "POST":
@@ -147,7 +157,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Global rate limit for all API endpoints
         if request.url.path.startswith("/api/"):
-            allowed, meta = _global_limiter.is_allowed(client_ip)
+            allowed, global_meta = _global_limiter.is_allowed(client_ip)
             if not allowed:
                 return JSONResponse(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -167,8 +177,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Attach rate limit headers for successful API requests
         if request.url.path.startswith("/api/"):
-            _, meta = _global_limiter.is_allowed(f"info:{client_ip}")
             response.headers["X-RateLimit-Limit"] = str(RATE_LIMIT_MAX_REQUESTS)
-            response.headers["X-RateLimit-Remaining"] = str(meta.get("remaining", 0))
+            response.headers["X-RateLimit-Remaining"] = str((global_meta or {}).get("remaining", 0))
 
         return response

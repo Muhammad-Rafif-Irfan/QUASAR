@@ -44,6 +44,7 @@ def get_correlation_id() -> str:
 # ---------------------------------------------------------------------------
 ENVIRONMENT = os.environ.get("QUASAR_ENV", "production")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "false").lower() == "true"
 
 
 class StructuredJsonFormatter(logging.Formatter):
@@ -214,7 +215,7 @@ class RequestTracingMiddleware(BaseHTTPMiddleware):
     @staticmethod
     def _get_client_ip(request: Request) -> str:
         """Extract real client IP respecting X-Forwarded-For."""
-        forwarded = request.headers.get("x-forwarded-for")
+        forwarded = request.headers.get("x-forwarded-for") if TRUST_PROXY_HEADERS else None
         if forwarded:
             return forwarded.split(",")[0].strip()
         return request.client.host if request.client else "unknown"

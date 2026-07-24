@@ -2,6 +2,8 @@ import os
 import time
 import uuid
 import json
+import math
+import logging
 import numpy as np
 from scipy.optimize import minimize
 
@@ -11,11 +13,14 @@ from qiskit import QuantumCircuit
 # Database & Models
 from app.database import SessionLocal
 from app.models import BenchmarkRun, QuantumJob, BenchmarkResult
+from app.schemas import MAX_OPTIMIZATION_STOPS
 from app.services.routing import calculate_distance_matrix, render_map
 
 # Core algorithm modules (wired from Team Tech Lead — Quantum / Classical)
 from core.solver_qai_hobo import QaiHoboSolver
 from services.classical_solver import ORToolsSolver
+
+logger = logging.getLogger("quasar.pipeline")
 
 # OR-Tools availability flag (solver lives in services.classical_solver)
 try:
@@ -64,7 +69,7 @@ def tour_distance(tour: list[int], dist_matrix: np.ndarray) -> int:
     return int(sum(dist_matrix[tour[k]][tour[k + 1]] for k in range(len(tour) - 1)))
 
 
-def get_quantum_backend_and_sampler():
+def get_quantum_backend_and_sampler(min_num_qubits: int = 1):
     """
     Initializes QiskitRuntimeService using token and returns:
     (backend, sampler, pass_manager, is_simulator)
@@ -80,7 +85,9 @@ def get_quantum_backend_and_sampler():
 
             service = QiskitRuntimeService(
                 channel="ibm_quantum_platform", token=token)
-            backend = service.least_busy(operational=True, min_num_qubits=127)
+            backend = service.least_busy(
+                operational=True, min_num_qubits=max(1, min_num_qubits)
+            )
             pm = generate_preset_pass_manager(
                 target=backend.target, optimization_level=3)
             sampler = Sampler(mode=backend)
@@ -326,6 +333,11 @@ def run_optimization_pipeline(
     selected = _normalize_algorithms(algorithms)
     needs_quantum = any(name in selected for name in ("qaoa", "qai_hobo"))
 
+    if not stops or len(stops) > MAX_OPTIMIZATION_STOPS:
+        raise ValueError(
+            f"stops must contain between 1 and {MAX_OPTIMIZATION_STOPS} locations"
+        )
+
     db = SessionLocal()
     try:
         run = db.query(BenchmarkRun).filter(BenchmarkRun.id == run_id).first()
@@ -406,7 +418,12 @@ def run_optimization_pipeline(
                     db.commit()
 
         if needs_quantum:
-            backend, sampler, pm, is_simulator = get_quantum_backend_and_sampler()
+            # QAI+HOBO uses n * ceil(log2(n)) logical qubits; choose hardware
+            # that can accommodate the largest selected quantum circuit.
+            min_qubits = n - 1
+            if "qai_hobo" in selected:
+                min_qubits = max(min_qubits, n * max(1, math.ceil(math.log2(n))))
+            backend, sampler, pm, is_simulator = get_quantum_backend_and_sampler(min_qubits)
 
             if "qaoa" in selected:
                 t0_qaoa = time.time()
@@ -465,13 +482,15 @@ def run_optimization_pipeline(
         run.status = "COMPLETED"
         db.commit()
 
-    except Exception as e:
+    except Exception:
         db.rollback()
         run = db.query(BenchmarkRun).filter(BenchmarkRun.id == run_id).first()
         if run:
             run.status = "FAILED"
-            run.error_message = str(e)
+            run.error_message = (
+                "Optimization pipeline failed. Review server logs using this run ID."
+            )
             db.commit()
-        print(f"Pipeline error for run {run_id}: {e}")
+        logger.exception("Pipeline error for run %s", run_id)
     finally:
         db.close()
