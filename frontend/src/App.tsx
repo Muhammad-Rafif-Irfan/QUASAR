@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from 'react'
+import { useState, useCallback, type FormEvent } from 'react'
 import { Map, Navigation, PackageCheck, Route, Settings, TriangleAlert, Truck, type LucideIcon } from 'lucide-react'
 import InitialRoutingResults from './InitialRoutingResults'
 import LiveDeliveryAndRouting from './LiveDeliveryAndRouting'
 import RoutePlanner, { initialOrders, initialVehicles, type Order, type Vehicle } from './RoutePlanner'
 import RoutingDetailsModal from './RoutingDetailsModal'
 import { AddNewOrderModal, ChangeAddressModal, type NewOrderDraft } from './SupportingStates'
+import { useRouteSimulation } from './useRouteSimulation'
 
 type Screen = 'overview' | 'planner' | 'results' | 'live'
 
@@ -77,6 +78,12 @@ function App() {
   const [changeAddressOpen, setChangeAddressOpen] = useState(false)
   const [addNewOrderOpen, setAddNewOrderOpen] = useState(false)
 
+  // Route simulation state — shared across Screen 03 and Screen 04
+  const { depot, stops, truckRoutes, totalDistance, addStop, addStopAuto } = useRouteSimulation()
+
+  // Track newly added stop IDs for distinct marker styling
+  const [newStopIds, setNewStopIds] = useState<Set<string>>(new Set())
+
   // Page navigation remains simple local React state; no router is used.
   const handleStartRouting = () => {
     setCurrentScreen('planner')
@@ -101,12 +108,32 @@ function App() {
     setChangeAddressOpen(false)
   }
 
-  const addLiveOrder = (draft: NewOrderDraft, shouldReRoute: boolean) => {
+  const addLiveOrder = useCallback((draft: NewOrderDraft, shouldReRoute: boolean) => {
     const nextNode = Math.max(0, ...orders.map((order) => Number(order.id.replace('N', '')) || 0)) + 1
-    setOrders((currentOrders) => [...currentOrders, { id: `N${nextNode}`, address: draft.address, weight: draft.weight, startTime: draft.startTime, endTime: draft.endTime }])
+    const newId = `N${nextNode}`
+    setOrders((currentOrders) => [...currentOrders, { id: newId, address: draft.address, weight: draft.weight, startTime: draft.startTime, endTime: draft.endTime }])
+
+    // Also add the stop to the map simulation
+    addStopAuto(newId, draft.address || undefined)
+    setNewStopIds((prev) => new Set(prev).add(newId))
+
     setAddNewOrderOpen(false)
     if (shouldReRoute) runOptimization()
-  }
+  }, [orders, addStopAuto])
+
+  const handleMapClick = useCallback((latlng: { lat: number; lon: number }) => {
+    const nextNode = Math.max(0, ...orders.map((order) => Number(order.id.replace('N', '')) || 0)) + 1
+    const newId = `N${nextNode}`
+    setOrders((currentOrders) => [...currentOrders, {
+      id: newId,
+      address: `Map pin (${latlng.lat.toFixed(4)}, ${latlng.lon.toFixed(4)})`,
+      weight: '10',
+      startTime: '09:00',
+      endTime: '11:00',
+    }])
+    addStop(latlng.lat, latlng.lon, `Map Stop ${nextNode}`)
+    setNewStopIds((prev) => new Set(prev).add(newId))
+  }, [orders, addStop])
 
   return (
     <main className="app">
@@ -122,8 +149,8 @@ function App() {
       </>}
 
       {currentScreen === 'planner' && <RoutePlanner orders={orders} setOrders={setOrders} vehicles={vehicles} setVehicles={setVehicles} isOptimizing={isOptimizing} onBack={() => setCurrentScreen('overview')} onOpenSettings={() => setSettingsOpen(true)} onRunOptimization={runOptimization} />}
-      {currentScreen === 'results' && <InitialRoutingResults isOptimizing={isOptimizing} onEditSetup={() => setCurrentScreen('planner')} onReRoute={runOptimization} onStartOperational={() => setCurrentScreen('live')} />}
-      {currentScreen === 'live' && <LiveDeliveryAndRouting onChangeAddress={() => setChangeAddressOpen(true)} onAddNewOrder={() => setAddNewOrderOpen(true)} onEndDelivery={() => setCurrentScreen('overview')} onViewLogDetails={() => setRoutingDetailsOpen(true)} />}
+      {currentScreen === 'results' && <InitialRoutingResults isOptimizing={isOptimizing} onEditSetup={() => setCurrentScreen('planner')} onReRoute={runOptimization} onStartOperational={() => setCurrentScreen('live')} depot={depot} stops={stops} truckRoutes={truckRoutes} totalDistance={totalDistance} />}
+      {currentScreen === 'live' && <LiveDeliveryAndRouting onChangeAddress={() => setChangeAddressOpen(true)} onAddNewOrder={() => setAddNewOrderOpen(true)} onEndDelivery={() => setCurrentScreen('overview')} onViewLogDetails={() => setRoutingDetailsOpen(true)} depot={depot} stops={stops} truckRoutes={truckRoutes} totalDistance={totalDistance} onMapClick={handleMapClick} newStopIds={newStopIds} />}
 
       {isOptimizing && <OptimizationLoading />}
       {settingsOpen && <SettingsModal onSave={handleSaveSettings} onClose={() => setSettingsOpen(false)} />}
