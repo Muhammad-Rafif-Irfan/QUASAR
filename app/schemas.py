@@ -64,3 +64,31 @@ class RunStatusResponse(BaseModel):
     class Config:
         orm_mode = True
         from_attributes = True
+
+
+class InspectPipelineStage(BaseModel):
+    step: int
+    name: str
+    module: str
+    description: str
+
+
+class InspectRecentRun(BaseModel):
+    run_id: str
+    status: str
+    depot_name: str
+    stops_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class InspectResponse(BaseModel):
+    service: str
+    version: str
+    environment: str
+    quantum_backend: str
+    database: str
+    pipeline: List[InspectPipelineStage]
+    endpoints: List[str]
+    recent_runs: List[InspectRecentRun]
+    notes: List[str]

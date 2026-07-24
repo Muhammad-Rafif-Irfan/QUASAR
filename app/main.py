@@ -199,6 +199,104 @@ def health_check():
     }
 
 
+@app.get(
+    "/api/v1/inspect",
+    response_model=schemas.InspectResponse,
+    status_code=status.HTTP_200_OK,
+)
+def inspect_runtime(db: Session = Depends(get_db)):
+    """
+    Runtime inspection — how the live app is wired and what it recently did.
+
+    Use this (or ``scripts/inspect.ps1``) to understand the request pipeline
+    without reading the whole codebase.
+    """
+    token = os.environ.get("IBM_QUANTUM_TOKEN") or os.environ.get("QISKIT_IBM_TOKEN")
+    quantum_mode = "ibm_hardware" if token else "local_simulator"
+
+    db_status = "connected"
+    recent: list[schemas.InspectRecentRun] = []
+    try:
+        rows = (
+            db.query(models.BenchmarkRun)
+            .order_by(models.BenchmarkRun.created_at.desc())
+            .limit(5)
+            .all()
+        )
+        recent = [
+            schemas.InspectRecentRun(
+                run_id=r.id,
+                status=r.status,
+                depot_name=r.depot_name,
+                stops_count=r.stops_count,
+                created_at=r.created_at,
+                updated_at=r.updated_at,
+            )
+            for r in rows
+        ]
+    except Exception:
+        db_status = "unreachable"
+
+    research_present = os.path.isdir("research/ibm_sdvrp")
+
+    return schemas.InspectResponse(
+        service="quasar-api",
+        version="1.1.0",
+        environment=os.environ.get("QUASAR_ENV", "production"),
+        quantum_backend=quantum_mode,
+        database=db_status,
+        pipeline=[
+            schemas.InspectPipelineStage(
+                step=1,
+                name="Accept request",
+                module="app.main:/api/v1/optimize",
+                description="Validate JSON, create BenchmarkRun, return run_id immediately (202).",
+            ),
+            schemas.InspectPipelineStage(
+                step=2,
+                name="Distance matrix",
+                module="app.services.routing",
+                description="OSMnx road network with 5s timeout; Haversine fallback if OSM fails.",
+            ),
+            schemas.InspectPipelineStage(
+                step=3,
+                name="Classical warm-start",
+                module="services.classical_solver.ORToolsSolver",
+                description="OR-Tools baseline tour used for approximation ratio.",
+            ),
+            schemas.InspectPipelineStage(
+                step=4,
+                name="Quantum solvers",
+                module="app.services.quantum_driver + core.solver_qai_hobo",
+                description="QAOA then QAI+HOBO on IBM QPU when token set, else local simulator.",
+            ),
+            schemas.InspectPipelineStage(
+                step=5,
+                name="Persist + map",
+                module="app.models + app.services.routing.render_map",
+                description="Write results/jobs to SQLite; Folium HTML under /static/maps.",
+            ),
+        ],
+        endpoints=[
+            "GET /",
+            "GET /health",
+            "GET /api/v1/inspect",
+            "POST /api/v1/optimize",
+            "GET /api/v1/optimize/{run_id}",
+            "GET /docs",
+            "GET /static/maps/{file}.html",
+        ],
+        recent_runs=recent,
+        notes=[
+            "Frontend (Vite) proxies /api and /health to this API on local demos.",
+            "Experimental IBM SDVRP runners live under research/ibm_sdvrp and are NOT in this pipeline."
+            if research_present
+            else "research/ibm_sdvrp package not found in working directory.",
+            "Poll GET /api/v1/optimize/{run_id} until status is COMPLETED or FAILED.",
+        ],
+    )
+
+
 @app.post(
     "/api/v1/optimize",
     response_model=schemas.OptimizeResponse,

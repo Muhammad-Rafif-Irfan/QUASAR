@@ -77,3 +77,87 @@ button { cursor: pointer; }
 @media (max-width: 900px) { .metric-grid, .live-routing-metrics { grid-template-columns: repeat(2, 1fr); }.main-grid, .planner-grid, .live-routing-main { grid-template-columns: 1fr; }.historical-data-card { min-height: auto; }.planner-shell { grid-template-columns: 1fr; min-height: 0; }.planner-sidebar { flex-direction: row; align-items: center; gap: 12px; padding: 10px 16px; border-right: 0; border-bottom: 1px solid #dfe3e8; }.planner-nav { display: flex; flex: 1; overflow-x: auto; }.planner-nav-item { width: max-content; flex: 0 0 auto; }.planner-sidebar-footer { margin-top: 0; padding-top: 0; border-top: 0; }.live-map-panel { min-height: 360px; } }
 @media (max-width: 620px) { .topbar { height: 56px; padding: 0 16px; }.topbar-meta > span:not(.system-status) { display: none; }.topbar-meta { gap: 12px; }.workspace { width: min(100% - 32px, 1240px); padding: 28px 0 40px; }.page-intro { display: grid; gap: 16px; margin-bottom: 20px; }.page-actions { display: grid; grid-template-columns: 1fr 1fr; }.settings-button, .route-action { width: 100%; }.metric-grid { gap: 8px; }.metric { min-height: 112px; padding: 14px; }.metric strong { margin-top: 14px; font-size: 23px; }.panel-heading, .planner-panel-heading { padding: 16px 16px 0; }.history-chart { margin: 12px 16px 0; }.chart-legend { padding: 4px 16px 14px; }.history-summary { padding-inline: 16px; }.history-records { padding-inline: 16px; }.activity-item { grid-template-columns: 32px 22px minmax(0, 1fr); gap: 8px; margin-inline: 16px; }.listener-status { font-size: 9px; }.planner-table { margin-inline: 16px; }.planner-panel-actions { padding-inline: 16px; }.planner-summary { grid-template-columns: repeat(2, 1fr); }.planner-summary span { border-bottom: 1px solid #edf0f3; }.planner-summary span:nth-child(2) { border-right: 0; }.planner-summary span:nth-child(n + 3) { border-bottom: 0; }.planner-footer-actions { display: grid; grid-template-columns: 1fr 1fr; }.settings-modal { padding: 18px; }.settings-fields { grid-template-columns: 1fr; }.settings-fields label:last-child { grid-column: auto; max-width: none; } }
 @media (max-width: 620px) { .initial-route-map { padding: 16px; }.initial-route-map__placeholder { min-height: 300px; }.initial-results-actions { display: grid; grid-template-columns: 1fr; }.initial-results-actions__secondary { grid-template-columns: 1fr 1fr; }.initial-results-actions .settings-button, .initial-results-actions .route-action { width: 100%; min-width: 0; }.live-routing-intro, .live-routing-footer { display: grid; }.live-routing-intro .settings-button, .live-routing-footer > .settings-button { width: max-content; }.live-routing-metrics { gap: 8px; }.live-routing-metrics .metric { min-height: 90px; }.live-routing-main { gap: 8px; }.live-map-panel { min-height: 300px; }.live-truck-stop { grid-template-columns: 18px 28px 1fr; }.live-truck-stop time { grid-column: 3; }.live-routing-footer { align-items: start; }.live-routing-controls { display: grid; width: 100%; }.live-order-actions { grid-template-columns: 1fr 1fr; }.live-order-actions .settings-button { min-width: 0; }.live-conditions { align-items: flex-start; }.supporting-modal { max-height: calc(100vh - 32px); overflow-y: auto; padding: 18px; }.supporting-fields { grid-template-columns: 1fr; }.supporting-modal__actions { justify-content: stretch; }.supporting-modal__actions .settings-button, .supporting-modal__actions .route-action { flex: 1; } }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LIVE MAP — Leaflet markers, animation, and container styles
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Container */
+.live-map-container { position: relative; flex: 1; min-height: 380px; border-radius: 8px; overflow: hidden; }
+.live-map-active { min-height: 100%; }
+
+/* Leaflet overrides */
+.live-map-container .leaflet-container { background: #0f172a; font-family: Inter, Arial, sans-serif; }
+.live-map-container .leaflet-popup-content-wrapper { border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / 30%); background: #1e293b; color: #e2e8f0; font-size: 11px; }
+.live-map-container .leaflet-popup-content { margin: 10px 12px; line-height: 1.5; }
+.live-map-container .leaflet-popup-content strong { color: #f8fafc; font-weight: 600; }
+.live-map-container .leaflet-popup-tip { background: #1e293b; }
+.live-map-container .leaflet-control-zoom a { background: #1e293b; color: #e2e8f0; border-color: #334155; }
+.live-map-container .leaflet-control-zoom a:hover { background: #334155; }
+.live-map-container .leaflet-tooltip { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; font-size: 10px; font-weight: 600; padding: 3px 8px; box-shadow: 0 2px 8px rgb(0 0 0 / 30%); }
+.live-map-container .leaflet-tooltip-top::before { border-top-color: #1e293b; }
+
+/* Depot pin */
+.depot-pin { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50% 50% 50% 0; background: linear-gradient(135deg, #dc2626, #ef4444); box-shadow: 0 3px 12px rgb(220 38 38 / 40%); transform: rotate(-45deg); }
+.depot-pin svg { transform: rotate(45deg); filter: drop-shadow(0 1px 1px rgb(0 0 0 / 20%)); }
+
+/* Stop pin */
+.stop-pin { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50% 50% 50% 0; background: linear-gradient(135deg, #1d4ed8, #3b82f6); box-shadow: 0 3px 10px rgb(37 99 235 / 40%); transform: rotate(-45deg); }
+.stop-pin svg { transform: rotate(45deg); }
+
+/* New stop pin (pulsing) */
+.new-stop-pin { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50% 50% 50% 0; background: linear-gradient(135deg, #059669, #10b981); box-shadow: 0 3px 10px rgb(16 185 129 / 45%); transform: rotate(-45deg); animation: newStopPulse 1.6s ease-in-out infinite; }
+.new-stop-pin svg { transform: rotate(45deg); }
+
+@keyframes newStopPulse {
+  0%, 100% { box-shadow: 0 3px 10px rgb(16 185 129 / 45%); }
+  50% { box-shadow: 0 3px 20px rgb(16 185 129 / 70%), 0 0 0 8px rgb(16 185 129 / 15%); }
+}
+
+/* Truck marker */
+.truck-pin { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #0f172a; border: 2.5px solid var(--truck-color, #2563eb); box-shadow: 0 0 14px rgb(37 99 235 / 50%), 0 0 0 4px rgb(37 99 235 / 12%); animation: truckGlow 2s ease-in-out infinite; }
+
+@keyframes truckGlow {
+  0%, 100% { box-shadow: 0 0 14px rgb(37 99 235 / 50%), 0 0 0 4px rgb(37 99 235 / 12%); }
+  50% { box-shadow: 0 0 22px rgb(37 99 235 / 70%), 0 0 0 8px rgb(37 99 235 / 20%); }
+}
+
+/* Recalculating animation */
+.route-recalculating::after { content: ''; position: absolute; inset: 0; z-index: 1000; pointer-events: none; border-radius: 8px; background: linear-gradient(90deg, transparent 0%, rgb(37 99 235 / 8%) 50%, transparent 100%); background-size: 200% 100%; animation: routeShimmer 1.2s ease-in-out; }
+
+@keyframes routeShimmer {
+  0% { background-position: 200% 0; opacity: 1; }
+  100% { background-position: -200% 0; opacity: 0; }
+}
+
+.recalc-badge { position: absolute; top: 12px; left: 50%; z-index: 1001; display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(6px); color: #e2e8f0; font-size: 11px; font-weight: 600; transform: translateX(-50%); animation: badgeFadeIn 0.3s ease-out; }
+
+.recalc-spinner { width: 12px; height: 12px; border: 2px solid rgb(37 99 235 / 30%); border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes badgeFadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+/* Map click hint */
+.map-click-hint { position: absolute; bottom: 12px; left: 50%; z-index: 1001; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 16px; background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(4px); color: #94a3b8; font-size: 10px; font-weight: 500; transform: translateX(-50%); pointer-events: none; }
+.map-click-hint svg { stroke: #64748b; }
+
+/* Route stats bar (Screen 03) */
+.initial-route-map__live { display: flex; flex-direction: column; min-height: clamp(350px, 48vw, 530px); height: clamp(350px, 48vw, 530px); }
+.initial-route-map__live .live-map-container { flex: 1; min-height: 0; }
+.route-stats-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 0 0 10px; }
+.route-stat { display: inline-flex; align-items: center; gap: 5px; color: #64748b; font-size: 11px; font-weight: 500; }
+.route-stat svg { stroke: #64748b; stroke-width: 1.8; }
+.route-stat--legend { gap: 6px; }
+.route-stat--legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+
+/* Truck color dot in sidebar */
+.truck-color-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* New stop highlight in truck list */
+.live-truck-stop--new { background: rgb(16 185 129 / 6%); animation: newStopFlash 1.5s ease-out; }
+@keyframes newStopFlash { 0% { background: rgb(16 185 129 / 20%); } 100% { background: rgb(16 185 129 / 6%); } }
+.live-truck-stop__coords { color: #475569; font-size: 9px; font-family: 'SF Mono', 'Fira Code', monospace; }
+
+/* Leaflet default icon fix */
+.leaflet-default-icon-path { background-image: none !important; }
+.custom-depot-marker, .custom-stop-marker, .custom-new-stop-marker, .custom-truck-marker { background: transparent; border: 0; }

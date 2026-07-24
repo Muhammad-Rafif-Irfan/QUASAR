@@ -203,6 +203,20 @@ bash scripts/dev.sh
 
 API only: `.\scripts\dev.ps1 -SkipFrontend` or `SKIP_FRONTEND=1 bash scripts/dev.sh`
 
+### Inspect (how the app runs)
+
+With the API up:
+
+```bash
+# Windows
+.\scripts\inspect.ps1
+
+# Linux / macOS
+bash scripts/inspect.sh
+```
+
+Or open: http://127.0.0.1:8000/api/v1/inspect
+
 ### Option B — Docker Compose (API + frontend)
 
 ```bash
