@@ -59,7 +59,6 @@ function LiveDeliveryAndRouting({ onChangeAddress, onAddNewOrder, onEndDelivery,
               {truck.stops.map((stop) => <div className="live-truck-stop" key={stop.node}><MapPin size={15} /><strong>{stop.node}</strong><span>{stop.weight}</span><time>{stop.window}</time></div>)}
             </div>
           </article>)}
-          <span className="route-update-arrow" aria-hidden="true">↓</span>
         </div>
       </section>
 
