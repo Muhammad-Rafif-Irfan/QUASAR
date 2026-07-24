@@ -5,14 +5,21 @@ type RoutingDetailsModalProps = {
 }
 
 const routingDetails = [
-  ['Algorithm', 'Hybrid classical-quantum routing'],
-  ['Backend', 'AerSimulator'],
-  ['Core', 'FALCON'],
-  ['Iterations', '256'],
-  ['Execution time', '1.2 s'],
+  ['Algorithm', 'QAOA+ hybrid quantum-classical'],
+  ['Backend', 'AerSimulator (qiskit 1.4)'],
+  ['Core solver', 'FALCON r1.3'],
+  ['QUBO variables', '64'],
+  ['Iterations', '512'],
+  ['Execution time', '2.4 s'],
+  ['Vehicles assigned', '3 of 4'],
+  ['Total stops', '8 delivery points'],
+  ['Total demand', '257 kg'],
+  ['Fleet capacity', '240 kg (split enabled)'],
   ['Route validity', 'Valid'],
-  ['Objective value', '28.4 km total distance'],
-  ['Updated nodes', 'N3, N4'],
+  ['Objective value', '24.7 km total distance'],
+  ['Split packages', 'N4 → Truck 2 (42 kg) + Truck 3 (20 kg)'],
+  ['Overflow resolved', 'YES — all constraints satisfied'],
+  ['Updated nodes', 'N3, N4, N5, N6, N7, N8'],
 ]
 
 // Screen 05 is opened from the live-routing log button and uses mock execution evidence.

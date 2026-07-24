@@ -31,12 +31,16 @@ export const DEPOT: MapLocation = {
   lon: 108.2022,
 }
 
-/** Pre-assigned Da Nang coordinates for the demo orders N1–N4. */
-const DEMO_COORDS: Record<string, { name: string; lat: number; lon: number }> = {
-  N1: { name: 'Pelabuhan', lat: 16.0650, lon: 108.2200 },
-  N2: { name: 'Pasar Con', lat: 16.0450, lon: 108.2100 },
-  N3: { name: 'Bandara', lat: 16.0438, lon: 108.1990 },
-  N4: { name: 'Hai Chau District', lat: 16.0680, lon: 108.2140 },
+/** Pre-assigned Da Nang coordinates for the demo orders N1–N8. */
+const DEMO_COORDS: Record<string, { name: string; lat: number; lon: number; weight?: string }> = {
+  N1: { name: '54 Nguyễn Văn Linh', lat: 16.0650, lon: 108.2200, weight: '12' },
+  N2: { name: '120 Trần Phú', lat: 16.0450, lon: 108.2100, weight: '38' },
+  N3: { name: '15 Lê Duẩn', lat: 16.0438, lon: 108.1990, weight: '24' },
+  N4: { name: '233 Ngô Quyền', lat: 16.0680, lon: 108.2140, weight: '62' },
+  N5: { name: '78 Hoàng Diệu', lat: 16.0600, lon: 108.2170, weight: '18' },
+  N6: { name: '9 Phan Châu Trinh', lat: 16.0520, lon: 108.2090, weight: '45' },
+  N7: { name: '301 Điện Biên Phủ', lat: 16.0710, lon: 108.2050, weight: '31' },
+  N8: { name: '42 Nguyễn Tri Phương', lat: 16.0580, lon: 108.1920, weight: '27' },
 }
 
 /** Extra location pool for dynamically added orders. */
@@ -141,6 +145,7 @@ export function useRouteSimulation() {
       name: coord.name,
       lat: coord.lat,
       lon: coord.lon,
+      weight: coord.weight,
     }))
   })
 
@@ -171,34 +176,32 @@ export function useRouteSimulation() {
     })
   }, [])
 
-  /** Split stops across two trucks and compute greedy waypoint order. */
+  /** Split stops across three trucks and compute greedy waypoint order. */
   const baseRoutes = useMemo(() => {
-    const half = Math.ceil(stops.length / 2)
-    const truck1Stops = stops.slice(0, half)
-    const truck2Stops = stops.slice(half)
+    const third = Math.ceil(stops.length / 3)
+    const truck1Stops = stops.slice(0, third)
+    const truck2Stops = stops.slice(third, third * 2)
+    const truck3Stops = stops.slice(third * 2)
+
+    const truckDefs = [
+      { id: 'truck-1', name: 'Truck 1', capacity: '80 kg', color: '#2563eb', stops: truck1Stops },
+      { id: 'truck-2', name: 'Truck 2', capacity: '100 kg', color: '#16a34a', stops: truck2Stops },
+      { id: 'truck-3', name: 'Truck 3', capacity: '60 kg', color: '#f59e0b', stops: truck3Stops },
+    ]
 
     const routes: { truckId: string; truckName: string; capacity: string; color: string; waypoints: MapLocation[]; orderIds: string[] }[] = []
 
-    if (truck1Stops.length > 0) {
-      routes.push({
-        truckId: 'truck-1',
-        truckName: 'Truck 1',
-        capacity: '60 kg',
-        color: '#2563eb',
-        waypoints: greedyRoute(DEPOT, truck1Stops),
-        orderIds: truck1Stops.map((s) => s.id),
-      })
-    }
-
-    if (truck2Stops.length > 0) {
-      routes.push({
-        truckId: 'truck-2',
-        truckName: 'Truck 2',
-        capacity: '100 kg',
-        color: '#16a34a',
-        waypoints: greedyRoute(DEPOT, truck2Stops),
-        orderIds: truck2Stops.map((s) => s.id),
-      })
+    for (const def of truckDefs) {
+      if (def.stops.length > 0) {
+        routes.push({
+          truckId: def.id,
+          truckName: def.name,
+          capacity: def.capacity,
+          color: def.color,
+          waypoints: greedyRoute(DEPOT, def.stops),
+          orderIds: def.stops.map((s) => s.id),
+        })
+      }
     }
 
     return routes

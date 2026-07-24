@@ -28,25 +28,31 @@ type Activity = {
 
 // Metric card data for the Operations Overview page.
 const metrics: Metric[] = [
-  { label: 'Vehicles Used', value: '2', unit: '/4', detail: 'of fleet deployed', emphasis: '50%', Icon: Truck, status: 'neutral' },
-  { label: 'Packages Delivered', value: '18', unit: '/24', detail: 'completed today', emphasis: '75%', Icon: PackageCheck, status: 'good' },
-  { label: 'Active Routes', value: '3', detail: 'currently monitored', emphasis: '2 live', Icon: Map, status: 'neutral' },
-  { label: 'Operational Events', value: '4', detail: 'event listener connected', emphasis: '1 urgent', Icon: TriangleAlert, status: 'alert' },
+  { label: 'Vehicles Used', value: '3', unit: '/4', detail: 'of fleet deployed', emphasis: '75%', Icon: Truck, status: 'good' },
+  { label: 'Packages Delivered', value: '22', unit: '/31', detail: 'completed today', emphasis: '71%', Icon: PackageCheck, status: 'good' },
+  { label: 'Active Routes', value: '3', detail: 'currently monitored', emphasis: '3 live', Icon: Map, status: 'neutral' },
+  { label: 'Operational Events', value: '6', detail: 'event listener connected', emphasis: '2 urgent', Icon: TriangleAlert, status: 'alert' },
 ]
 
 // Recent activity mock data shown in the Operations Overview panel.
 const recentActivities: Activity[] = [
+  { time: '10:32', title: 'Truck T3 completed route', detail: 'Returned to depot · 2h 15m · 3 deliveries', kind: 'delivered' },
+  { time: '10:18', title: 'New order N9 received', detail: '42 Nguyễn Tri Phương, Thanh Khê · 15 kg', kind: 'tracking' },
+  { time: '09:45', title: '8 packages delivered', detail: 'Truck T1 completed morning batch · 1h 52m', kind: 'delivered' },
+  { time: '09:12', title: 'Truck T2 heading to 233 Ngô Quyền', detail: 'ETA 12 min · carrying 62 kg', kind: 'tracking' },
   { time: '08:40', title: '13 packages delivered', detail: 'Truck T1 returned to depot · 3h 26m', kind: 'delivered' },
-  { time: '08:17', title: 'Truck T2 heading to Grand Avenue', detail: 'ETA 8 min', kind: 'tracking' },
+  { time: '08:17', title: 'Route recalculated', detail: 'Added N5 to Truck T2 · total distance +2.3 km', kind: 'tracking' },
 ]
 
-const deliveryTrend = [42, 56, 51, 68, 62, 78, 73]
-const routeTrend = [28, 35, 31, 47, 42, 54, 50]
+const deliveryTrend = [42, 56, 51, 68, 62, 78, 73, 81, 76, 88, 85, 92, 89, 95]
+const routeTrend = [28, 35, 31, 47, 42, 54, 50, 58, 53, 62, 59, 67, 64, 71]
 const historicalRecords = [
-  { period: 'Today', deliveries: '18 delivered', routes: '3 active routes' },
-  { period: 'Mon, 13 May', deliveries: '16 delivered', routes: '2 completed routes' },
-  { period: 'Sun, 12 May', deliveries: '14 delivered', routes: '2 completed routes' },
-  { period: 'Sat, 11 May', deliveries: '11 delivered', routes: '1 completed route' },
+  { period: 'Today', deliveries: '22 delivered', routes: '3 active routes' },
+  { period: 'Wed, 23 Jul', deliveries: '28 delivered', routes: '3 completed routes' },
+  { period: 'Tue, 22 Jul', deliveries: '24 delivered', routes: '3 completed routes' },
+  { period: 'Mon, 21 Jul', deliveries: '19 delivered', routes: '2 completed routes' },
+  { period: 'Sun, 20 Jul', deliveries: '16 delivered', routes: '2 completed routes' },
+  { period: 'Sat, 19 Jul', deliveries: '11 delivered', routes: '1 completed route' },
 ]
 
 type SettingsModalProps = {
