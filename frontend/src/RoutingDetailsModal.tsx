@@ -1,36 +1,66 @@
 import { CheckCircle2, X } from 'lucide-react'
+import type { ComparisonRow } from './InitialRoutingResults'
 
 type RoutingDetailsModalProps = {
   onClose: () => void
+  solverLabel: string
+  comparisonRows: ComparisonRow[]
 }
 
-const routingDetails = [
-  ['Algorithm', 'Hybrid classical-quantum routing'],
-  ['Backend', 'AerSimulator'],
-  ['Core', 'FALCON'],
-  ['Iterations', '256'],
-  ['Execution time', '1.2 s'],
-  ['Route validity', 'Valid'],
-  ['Objective value', '28.4 km total distance'],
-  ['Updated nodes', 'N3, N4'],
-]
+function RoutingDetailsModal({ onClose, solverLabel, comparisonRows }: RoutingDetailsModalProps) {
+  const best = [...comparisonRows].sort((a, b) => a.distanceMeters - b.distanceMeters)[0]
+  const details: Array<[string, string]> = [
+    ['Selected mode', solverLabel],
+    ['Best algorithm', best?.algorithm || '—'],
+    ['Best distance', best ? `${(best.distanceMeters / 1000).toFixed(2)} km` : '—'],
+    ['Solvers compared', String(comparisonRows.length || 0)],
+    ['Route validity', best?.isValid ? 'Valid' : 'Pending'],
+  ]
 
-// Screen 05 is opened from the live-routing log button and uses mock execution evidence.
-function RoutingDetailsModal({ onClose }: RoutingDetailsModalProps) {
   return (
     <div className="modal-backdrop routing-details-backdrop" role="presentation">
       <section className="routing-details-modal" role="dialog" aria-modal="true" aria-labelledby="routing-details-title">
         <header className="routing-details-modal__header">
-          <div><p className="section-label">Routing details</p><h2 id="routing-details-title">Route execution details</h2></div>
+          <div>
+            <p className="section-label">Routing details</p>
+            <h2 id="routing-details-title">Route execution details</h2>
+          </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close routing details"><X size={16} /></button>
         </header>
 
-        <p className="routing-details-copy">Execution evidence for the current route calculation.</p>
+        <p className="routing-details-copy">Execution evidence for the latest algorithm comparison.</p>
         <div className="routing-details-grid">
-          {routingDetails.map(([label, value]) => <div key={label}><span>{label}</span><strong className={label === 'Route validity' ? 'routing-details-valid' : ''}>{label === 'Route validity' && <CheckCircle2 size={15} />}{value}</strong></div>)}
+          {details.map(([label, value]) => (
+            <div key={label}>
+              <span>{label}</span>
+              <strong className={label === 'Route validity' ? 'routing-details-valid' : ''}>
+                {label === 'Route validity' && <CheckCircle2 size={15} />}
+                {value}
+              </strong>
+            </div>
+          ))}
         </div>
 
-        <footer className="routing-details-actions"><button type="button" className="settings-button" onClick={onClose}>Close</button></footer>
+        {comparisonRows.length > 0 && (
+          <div className="comparison-table routing-details-comparison" role="table">
+            <div className="comparison-head" role="row">
+              <span>Algorithm</span>
+              <span>Distance</span>
+              <span>Time</span>
+            </div>
+            {comparisonRows.map((row) => (
+              <div className="comparison-row" role="row" key={row.algorithm}>
+                <strong>{row.algorithm}</strong>
+                <span>{(row.distanceMeters / 1000).toFixed(2)} km</span>
+                <span>{row.executionTimeMs.toFixed(0)} ms</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <footer className="routing-details-actions">
+          <button type="button" className="settings-button" onClick={onClose}>Close</button>
+        </footer>
       </section>
     </div>
   )

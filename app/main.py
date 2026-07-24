@@ -292,6 +292,7 @@ def inspect_runtime(db: Session = Depends(get_db)):
             "Experimental IBM SDVRP runners live under research/ibm_sdvrp and are NOT in this pipeline."
             if research_present
             else "research/ibm_sdvrp package not found in working directory.",
+            "POST /api/v1/optimize accepts optional algorithms=[nearest_neighbor,or_tools,qaoa,qai_hobo].",
             "Poll GET /api/v1/optimize/{run_id} until status is COMPLETED or FAILED.",
         ],
     )
@@ -347,6 +348,7 @@ def optimize_route(
         run_id=run_id,
         depot=request.depot.dict(),
         stops=[s.dict() for s in request.stops],
+        algorithms=request.algorithms,
     )
 
     logger.info("Optimization run %s submitted with %d stops.", run_id[:8], len(request.stops))

@@ -1,6 +1,14 @@
 import LiveMap from './LiveMap'
 import type { MapLocation, TruckRoute } from './useRouteSimulation'
 
+export type ComparisonRow = {
+  algorithm: string
+  distanceMeters: number
+  executionTimeMs: number
+  isValid: boolean
+  approximationRatio: number | null
+}
+
 type InitialRoutingResultsProps = {
   onEditSetup: () => void
   onReRoute: () => void
@@ -10,17 +18,65 @@ type InitialRoutingResultsProps = {
   stops: MapLocation[]
   truckRoutes: TruckRoute[]
   totalDistance: number
+  solverLabel: string
+  comparisonRows: ComparisonRow[]
+  optimizeError: string | null
 }
 
-// Screen 03 follows the approved wireframe: one route-result canvas and its three actions.
-function InitialRoutingResults({ onEditSetup, onReRoute, onStartOperational, isOptimizing, depot, stops, truckRoutes, totalDistance }: InitialRoutingResultsProps) {
+function InitialRoutingResults({
+  onEditSetup,
+  onReRoute,
+  onStartOperational,
+  isOptimizing,
+  depot,
+  stops,
+  truckRoutes,
+  totalDistance,
+  solverLabel,
+  comparisonRows,
+  optimizeError,
+}: InitialRoutingResultsProps) {
   return (
     <section className="workspace results-workspace" aria-labelledby="routing-results-title">
       <div className="results-intro">
         <p className="eyebrow">Routing result</p>
         <h1 id="routing-results-title">Initial Routing Results</h1>
-        <p className="subtitle">Review the initial route before starting delivery operations.</p>
+        <p className="subtitle">
+          Review the route and algorithm comparison before starting delivery operations.
+          Selected mode: <strong>{solverLabel}</strong>
+        </p>
       </div>
+
+      {optimizeError && <p className="optimize-warning" role="status">{optimizeError}</p>}
+
+      {comparisonRows.length > 0 && (
+        <section className="panel comparison-panel" aria-label="Algorithm comparison">
+          <div className="panel-heading">
+            <div>
+              <p className="section-label">Benchmark</p>
+              <h2>Algorithm comparison</h2>
+            </div>
+          </div>
+          <div className="comparison-table" role="table">
+            <div className="comparison-head" role="row">
+              <span>Algorithm</span>
+              <span>Distance</span>
+              <span>Time</span>
+              <span>Ratio vs OR-Tools</span>
+              <span>Valid</span>
+            </div>
+            {comparisonRows.map((row) => (
+              <div className="comparison-row" role="row" key={row.algorithm}>
+                <strong>{row.algorithm}</strong>
+                <span>{(row.distanceMeters / 1000).toFixed(2)} km</span>
+                <span>{row.executionTimeMs.toFixed(0)} ms</span>
+                <span>{row.approximationRatio == null ? '—' : row.approximationRatio.toFixed(3)}</span>
+                <span className={row.isValid ? 'is-valid' : 'is-invalid'}>{row.isValid ? 'Yes' : 'No'}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="panel initial-route-map" aria-label="Initial route map">
         <div className="initial-route-map__live">

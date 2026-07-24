@@ -12,6 +12,13 @@ class Location(BaseModel):
 class OptimizeRequest(BaseModel):
     depot: Location
     stops: List[Location] = Field(..., min_items=1)
+    # Optional solver selection for comparison runs.
+    # Allowed: nearest_neighbor, or_tools, qaoa, qai_hobo
+    # Default runs classical + quantum suite for side-by-side comparison.
+    algorithms: Optional[List[str]] = Field(
+        default=None,
+        example=["nearest_neighbor", "or_tools", "qaoa", "qai_hobo"],
+    )
 
 
 class OptimizeResponse(BaseModel):

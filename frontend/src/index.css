@@ -161,3 +161,22 @@ button { cursor: pointer; }
 /* Leaflet default icon fix */
 .leaflet-default-icon-path { background-image: none !important; }
 .custom-depot-marker, .custom-stop-marker, .custom-new-stop-marker, .custom-truck-marker { background: transparent; border: 0; }
+
+/* Solver dropdown + comparison table */
+.settings-solver-hint { margin: 10px 0 0; color: #64748b; font-size: 12px; }
+.planner-solver-bar { display: grid; gap: 8px; margin: 16px 0 8px; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+.planner-solver-bar label { display: grid; gap: 6px; color: #475569; font-size: 11px; font-weight: 600; }
+.planner-solver-bar select { width: min(100%, 420px); height: 38px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #0f172a; }
+.planner-solver-bar p { margin: 0; color: #64748b; font-size: 12px; }
+.comparison-panel { margin-bottom: 16px; }
+.comparison-table { display: grid; gap: 0; }
+.comparison-head, .comparison-row { display: grid; grid-template-columns: 1.4fr repeat(4, 1fr); gap: 8px; padding: 10px 12px; align-items: center; }
+.comparison-head { color: #64748b; font-size: 11px; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
+.comparison-row { border-bottom: 1px solid #f1f5f9; font-size: 12px; color: #334155; }
+.comparison-row strong { color: #0f172a; }
+.comparison-row .is-valid { color: #15803d; font-weight: 600; }
+.comparison-row .is-invalid { color: #b91c1c; font-weight: 600; }
+.optimize-warning { margin: 0 0 12px; padding: 10px 12px; border-radius: 6px; background: #fff7ed; color: #9a3412; font-size: 12px; }
+.routing-details-comparison { margin-top: 14px; }
+.routing-details-comparison .comparison-head,
+.routing-details-comparison .comparison-row { grid-template-columns: 1.4fr 1fr 1fr; }

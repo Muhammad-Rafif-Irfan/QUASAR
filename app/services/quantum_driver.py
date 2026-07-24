@@ -143,6 +143,34 @@ def solve_or_tools(dist_matrix: np.ndarray) -> tuple[list[int], float, float]:
     return ort_tour, dist, t_ms
 
 
+def solve_nearest_neighbor(dist_matrix: np.ndarray) -> tuple[list[int], float, float]:
+    """Classical nearest-neighbor TSP. Returns (tour, distance, wall_clock_ms)."""
+    t0 = time.time()
+    tour = solve_greedy_tsp(dist_matrix)
+    t_ms = (time.time() - t0) * 1000.0
+    return tour, float(tour_distance(tour, dist_matrix)), t_ms
+
+
+ALLOWED_ALGORITHMS = {
+    "nearest_neighbor",
+    "or_tools",
+    "qaoa",
+    "qai_hobo",
+}
+DEFAULT_ALGORITHMS = ["nearest_neighbor", "or_tools", "qaoa", "qai_hobo"]
+
+
+def _normalize_algorithms(algorithms: list[str] | None) -> list[str]:
+    if not algorithms:
+        return list(DEFAULT_ALGORITHMS)
+    selected: list[str] = []
+    for name in algorithms:
+        key = str(name).strip().lower()
+        if key in ALLOWED_ALGORITHMS and key not in selected:
+            selected.append(key)
+    return selected or list(DEFAULT_ALGORITHMS)
+
+
 def solve_qaoa(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool, run_id: str, db) -> tuple[list[int], float, float]:
     """
     Executes Closed-Loop QAOA on the backend (COBYLA optimization, max 3 iterations).
@@ -286,104 +314,158 @@ def solve_qai_hobo(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: 
     return outcome["best_tour"], outcome["best_distance"], outcome["qpu_seconds"]
 
 
-def run_optimization_pipeline(run_id: str, depot: dict, stops: list[dict]):
+def run_optimization_pipeline(
+    run_id: str,
+    depot: dict,
+    stops: list[dict],
+    algorithms: list[str] | None = None,
+):
     """
-    Main asynchronous worker executing classical and quantum route optimizations.
+    Asynchronous worker that runs the selected classical and/or quantum solvers.
     """
+    selected = _normalize_algorithms(algorithms)
+    needs_quantum = any(name in selected for name in ("qaoa", "qai_hobo"))
+
     db = SessionLocal()
     try:
-        # Update status to RUNNING
         run = db.query(BenchmarkRun).filter(BenchmarkRun.id == run_id).first()
         if not run:
             return
         run.status = "RUNNING"
         db.commit()
 
-        # Step 1: Calculate Distance Matrix
         dist_matrix, G, nodes = calculate_distance_matrix(depot, stops)
         points = [depot] + stops
         n = len(points)
 
-        # Step 2: OR-Tools Classical Baseline
-        ort_tour, ort_dist, ort_time_ms = solve_or_tools(dist_matrix)
-        is_val, val_err = validate_tour(ort_tour, n)
+        baseline_dist = None
+        ort_tour = None
+        ort_dist = None
 
-        ort_result = BenchmarkResult(
-            run_id=run_id,
-            algorithm="OR-Tools",
-            tour=json.dumps(ort_tour),
-            distance_meters=float(ort_dist),
-            is_valid=is_val,
-            validation_error=val_err,
-            approximation_ratio=1.0,
-            execution_time_ms=ort_time_ms
-        )
-        db.add(ort_result)
-        db.commit()
+        if "nearest_neighbor" in selected:
+            nn_tour, nn_dist, nn_time_ms = solve_nearest_neighbor(dist_matrix)
+            is_val, val_err = validate_tour(nn_tour, n)
+            if baseline_dist is None and nn_dist > 0:
+                baseline_dist = float(nn_dist)
+            db.add(BenchmarkResult(
+                run_id=run_id,
+                algorithm="Nearest Neighbor",
+                tour=json.dumps(nn_tour),
+                distance_meters=float(nn_dist),
+                is_valid=is_val,
+                validation_error=val_err,
+                approximation_ratio=(
+                    float(nn_dist / baseline_dist) if baseline_dist else None
+                ),
+                execution_time_ms=nn_time_ms,
+            ))
+            db.commit()
+            render_map(
+                nn_tour, points, G, nodes,
+                f"static/maps/{run_id}_Nearest_Neighbor.html",
+                f"Nearest Neighbor ({nn_dist}m)", "blue",
+            )
 
-        # Save baseline map
-        render_map(ort_tour, points, G, nodes,
-                   f"static/maps/{run_id}_OR_Tools.html", f"OR-Tools ({ort_dist}m)", "orange")
+        if "or_tools" in selected or needs_quantum:
+            ort_tour, ort_dist, ort_time_ms = solve_or_tools(dist_matrix)
+            is_val, val_err = validate_tour(ort_tour, n)
+            if ort_dist and ort_dist > 0:
+                baseline_dist = float(ort_dist)
 
-        # Step 3: Connect to Quantum Backend
-        backend, sampler, pm, is_simulator = get_quantum_backend_and_sampler()
+            if "or_tools" in selected:
+                db.add(BenchmarkResult(
+                    run_id=run_id,
+                    algorithm="OR-Tools",
+                    tour=json.dumps(ort_tour),
+                    distance_meters=float(ort_dist),
+                    is_valid=is_val,
+                    validation_error=val_err,
+                    approximation_ratio=1.0 if ort_dist else None,
+                    execution_time_ms=ort_time_ms,
+                ))
+                db.commit()
+                render_map(
+                    ort_tour, points, G, nodes,
+                    f"static/maps/{run_id}_OR_Tools.html",
+                    f"OR-Tools ({ort_dist}m)", "orange",
+                )
 
-        # Step 4: Run QAOA
-        t0_qaoa = time.time()
-        qaoa_tour, qaoa_dist, _ = solve_qaoa(
-            dist_matrix, backend, sampler, pm, is_simulator, run_id, db)
-        qaoa_time_ms = (time.time() - t0_qaoa) * 1000.0
+            if "nearest_neighbor" in selected and ort_dist and ort_dist > 0:
+                nn_row = (
+                    db.query(BenchmarkResult)
+                    .filter(
+                        BenchmarkResult.run_id == run_id,
+                        BenchmarkResult.algorithm == "Nearest Neighbor",
+                    )
+                    .first()
+                )
+                if nn_row:
+                    nn_row.approximation_ratio = float(
+                        nn_row.distance_meters / ort_dist
+                    )
+                    db.commit()
 
-        qaoa_is_val, qaoa_val_err = validate_tour(qaoa_tour, n)
-        qaoa_ratio = float(qaoa_dist / ort_dist) if ort_dist > 0 else 0.0
+        if needs_quantum:
+            backend, sampler, pm, is_simulator = get_quantum_backend_and_sampler()
 
-        qaoa_result = BenchmarkResult(
-            run_id=run_id,
-            algorithm="QUBO+QAOA",
-            tour=json.dumps(qaoa_tour),
-            distance_meters=float(qaoa_dist),
-            is_valid=qaoa_is_val,
-            validation_error=qaoa_val_err,
-            approximation_ratio=qaoa_ratio,
-            execution_time_ms=qaoa_time_ms
-        )
-        db.add(qaoa_result)
-        db.commit()
+            if "qaoa" in selected:
+                t0_qaoa = time.time()
+                qaoa_tour, qaoa_dist, _ = solve_qaoa(
+                    dist_matrix, backend, sampler, pm, is_simulator, run_id, db)
+                qaoa_time_ms = (time.time() - t0_qaoa) * 1000.0
+                qaoa_is_val, qaoa_val_err = validate_tour(qaoa_tour, n)
+                ref = ort_dist if ort_dist and ort_dist > 0 else baseline_dist
+                db.add(BenchmarkResult(
+                    run_id=run_id,
+                    algorithm="QUBO+QAOA",
+                    tour=json.dumps(qaoa_tour),
+                    distance_meters=float(qaoa_dist),
+                    is_valid=qaoa_is_val,
+                    validation_error=qaoa_val_err,
+                    approximation_ratio=float(qaoa_dist / ref) if ref else None,
+                    execution_time_ms=qaoa_time_ms,
+                ))
+                db.commit()
+                render_map(
+                    qaoa_tour, points, G, nodes,
+                    f"static/maps/{run_id}_QAOA.html",
+                    f"QAOA ({qaoa_dist}m)", "red",
+                )
 
-        render_map(qaoa_tour, points, G, nodes,
-                   f"static/maps/{run_id}_QAOA.html", f"QAOA ({qaoa_dist}m)", "red")
+            if "qai_hobo" in selected:
+                if ort_tour is None:
+                    ort_tour, ort_dist, _ = solve_or_tools(dist_matrix)
+                    if ort_dist and ort_dist > 0:
+                        baseline_dist = float(ort_dist)
+                t0_qai = time.time()
+                qai_tour, qai_dist, _ = solve_qai_hobo(
+                    dist_matrix, backend, sampler, pm, is_simulator,
+                    ort_tour, run_id, db,
+                )
+                qai_time_ms = (time.time() - t0_qai) * 1000.0
+                qai_is_val, qai_val_err = validate_tour(qai_tour, n)
+                ref = ort_dist if ort_dist and ort_dist > 0 else baseline_dist
+                db.add(BenchmarkResult(
+                    run_id=run_id,
+                    algorithm="QAI+HOBO",
+                    tour=json.dumps(qai_tour),
+                    distance_meters=float(qai_dist),
+                    is_valid=qai_is_val,
+                    validation_error=qai_val_err,
+                    approximation_ratio=float(qai_dist / ref) if ref else None,
+                    execution_time_ms=qai_time_ms,
+                ))
+                db.commit()
+                render_map(
+                    qai_tour, points, G, nodes,
+                    f"static/maps/{run_id}_QAI_HOBO.html",
+                    f"QAI+HOBO ({qai_dist}m)", "green",
+                )
 
-        # Step 5: Run QAI+HOBO
-        t0_qai = time.time()
-        qai_tour, qai_dist, _ = solve_qai_hobo(
-            dist_matrix, backend, sampler, pm, is_simulator, ort_tour, run_id, db)
-        qai_time_ms = (time.time() - t0_qai) * 1000.0
-
-        qai_is_val, qai_val_err = validate_tour(qai_tour, n)
-        qai_ratio = float(qai_dist / ort_dist) if ort_dist > 0 else 0.0
-
-        qai_result = BenchmarkResult(
-            run_id=run_id,
-            algorithm="QAI+HOBO",
-            tour=json.dumps(qai_tour),
-            distance_meters=float(qai_dist),
-            is_valid=qai_is_val,
-            validation_error=qai_val_err,
-            approximation_ratio=qai_ratio,
-            execution_time_ms=qai_time_ms
-        )
-        db.add(qai_result)
-        db.commit()
-
-        render_map(qai_tour, points, G, nodes,
-                   f"static/maps/{run_id}_QAI_HOBO.html", f"QAI+HOBO ({qai_dist}m)", "green")
-
-        # Update status to COMPLETED
         run.status = "COMPLETED"
         db.commit()
 
     except Exception as e:
-        # Update status to FAILED and record error message
         db.rollback()
         run = db.query(BenchmarkRun).filter(BenchmarkRun.id == run_id).first()
         if run:
