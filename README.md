@@ -254,6 +254,21 @@ uvicorn app.main:app --reload --port 8000
 
 Optional env: `IBM_QUANTUM_TOKEN` (omit → local simulator).
 
+### Research roadmap — MerLin (not yet integrated)
+
+[`MerLin`](https://github.com/merlinquantum/merlin) is being tracked as a
+**post-hackathon research option**, not as a current QUASAR dependency. It is a photonic quantum machine-learning framework
+with PyTorch integrations; it does not replace QUASAR's Qiskit/IBM
+cost-Hamiltonian QAOA routing path.
+
+Before any MerLin experiment is implemented, the team must define a concrete
+learning task (for example, demand or ETA forecasting), compare it with a
+classical PyTorch baseline on a documented dataset, and report accuracy,
+latency, cost, and hardware/simulator provenance. It will not be presented as
+a quantum routing solver or as evidence of quantum advantage without that
+benchmark. The delivery optimizer remains classical for larger instances, with
+the bounded QAOA experiment limited to its verified three-stop scope.
+
 ### Tests
 
 ```bash
