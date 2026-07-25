@@ -159,6 +159,19 @@ button { cursor: pointer; }
 @keyframes newStopFlash { 0% { background: rgb(16 185 129 / 20%); } 100% { background: rgb(16 185 129 / 6%); } }
 .live-truck-stop__coords { color: #475569; font-size: 9px; font-family: 'SF Mono', 'Fira Code', monospace; }
 
+/* Dataset Selector */
+.dataset-selector { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; background: #f8fafc; border: 1px solid #e2e8f0; flex-wrap: wrap; }
+.dataset-selector__label { display: flex; align-items: center; gap: 6px; color: #64748b; font-size: 11px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+.dataset-selector__options { display: flex; gap: 8px; flex-wrap: wrap; }
+.dataset-option { display: flex; flex-direction: column; gap: 2px; padding: 8px 14px; border-radius: 6px; border: 1.5px solid #e2e8f0; background: #fff; cursor: pointer; text-align: left; transition: all 0.15s ease; }
+.dataset-option:hover { border-color: #a5b4fc; background: #f5f3ff; }
+.dataset-option--active { border-color: #6366f1; background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%); box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+.dataset-option strong { color: #1e293b; font-size: 12px; }
+.dataset-option small { color: #94a3b8; font-size: 9px; }
+.dataset-option--active strong { color: #4338ca; }
+.dataset-option--active small { color: #6366f1; }
+.dataset-source { margin: 0; color: #94a3b8; font-size: 9px; font-style: italic; margin-left: auto; }
+
 /* Leaflet default icon fix */
 .leaflet-default-icon-path { background-image: none !important; }
 .custom-depot-marker, .custom-stop-marker, .custom-new-stop-marker, .custom-truck-marker { background: transparent; border: 0; }

@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { getDatasetByKey, type DatasetCoord } from './datasets'
 
 // ─── Da Nang demo coordinates (matches backend demo data) ────────────
 export type MapLocation = {
@@ -24,6 +25,7 @@ export type TruckRoute = {
   roadDistance: number
 }
 
+/** Default depot — will be overridden by dataset selection */
 export const DEPOT: MapLocation = {
   id: 'depot',
   name: 'Depot Pusat',
@@ -31,16 +33,14 @@ export const DEPOT: MapLocation = {
   lon: 108.2022,
 }
 
-/** Pre-assigned Da Nang coordinates for the demo orders N1–N8. */
-const DEMO_COORDS: Record<string, { name: string; lat: number; lon: number; weight?: string }> = {
-  N1: { name: '54 Nguyễn Văn Linh', lat: 16.0650, lon: 108.2200, weight: '12' },
-  N2: { name: '120 Trần Phú', lat: 16.0450, lon: 108.2100, weight: '38' },
-  N3: { name: '15 Lê Duẩn', lat: 16.0438, lon: 108.1990, weight: '24' },
-  N4: { name: '233 Ngô Quyền', lat: 16.0680, lon: 108.2140, weight: '62' },
-  N5: { name: '78 Hoàng Diệu', lat: 16.0600, lon: 108.2170, weight: '18' },
-  N6: { name: '9 Phan Châu Trinh', lat: 16.0520, lon: 108.2090, weight: '45' },
-  N7: { name: '301 Điện Biên Phủ', lat: 16.0710, lon: 108.2050, weight: '31' },
-  N8: { name: '42 Nguyễn Tri Phương', lat: 16.0580, lon: 108.1920, weight: '27' },
+function coordsToStops(coords: Record<string, DatasetCoord>): MapLocation[] {
+  return Object.values(coords).map((c) => ({
+    id: c.id,
+    name: c.name,
+    lat: c.lat,
+    lon: c.lon,
+    weight: c.weight,
+  }))
 }
 
 /** Extra location pool for dynamically added orders. */
@@ -138,16 +138,28 @@ async function fetchRoadRoute(waypoints: MapLocation[]): Promise<{ geometry: [nu
 }
 
 // ─── Main hook ────────────────────────────────────────────────────────
-export function useRouteSimulation() {
-  const [stops, setStops] = useState<MapLocation[]>(() => {
-    return Object.entries(DEMO_COORDS).map(([id, coord]) => ({
-      id,
-      name: coord.name,
-      lat: coord.lat,
-      lon: coord.lon,
-      weight: coord.weight,
-    }))
-  })
+export function useRouteSimulation(datasetKey: string = 'demo') {
+  const dataset = getDatasetByKey(datasetKey)
+  const prevDatasetKey = useRef(datasetKey)
+
+  const [depot, setDepot] = useState<MapLocation>(() => ({
+    id: 'depot',
+    name: dataset.depot.name,
+    lat: dataset.depot.lat,
+    lon: dataset.depot.lon,
+  }))
+
+  const [stops, setStops] = useState<MapLocation[]>(() => coordsToStops(dataset.coords))
+
+  // Reset stops and depot when dataset changes
+  useEffect(() => {
+    if (datasetKey !== prevDatasetKey.current) {
+      const ds = getDatasetByKey(datasetKey)
+      setStops(coordsToStops(ds.coords))
+      setDepot({ id: 'depot', name: ds.depot.name, lat: ds.depot.lat, lon: ds.depot.lon })
+      prevDatasetKey.current = datasetKey
+    }
+  }, [datasetKey])
 
   /** Add a new stop at a specific lat/lon (e.g. user clicked the map). */
   const addStop = useCallback((lat: number, lon: number, label?: string) => {
@@ -198,14 +210,14 @@ export function useRouteSimulation() {
           truckName: def.name,
           capacity: def.capacity,
           color: def.color,
-          waypoints: greedyRoute(DEPOT, def.stops),
+          waypoints: greedyRoute(depot, def.stops),
           orderIds: def.stops.map((s) => s.id),
         })
       }
     }
 
     return routes
-  }, [stops])
+  }, [stops, depot])
 
   // Fetch real road geometry from OSRM for each truck route
   const [truckRoutes, setTruckRoutes] = useState<TruckRoute[]>([])
@@ -267,7 +279,7 @@ export function useRouteSimulation() {
   }, [truckRoutes])
 
   return {
-    depot: DEPOT,
+    depot,
     stops,
     truckRoutes,
     totalDistance,

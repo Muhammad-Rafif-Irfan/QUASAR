@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
-import { ArrowLeft, PackageCheck, Plus, Settings, Trash2, Truck, Upload } from 'lucide-react'
+import { ArrowLeft, Database, PackageCheck, Plus, Settings, Trash2, Truck, Upload } from 'lucide-react'
+import { DATASETS } from './datasets'
 
 export type Order = {
   id: string
@@ -24,37 +25,32 @@ type RoutePlannerProps = {
   onBack: () => void
   onOpenSettings: () => void
   onRunOptimization: () => void
+  activeDataset: string
+  onDatasetChange: (key: string) => void
 }
 
 // Initial mock data is owned by App so it survives navigation to Screen 03.
-export const initialOrders: Order[] = [
-  { id: 'N1', address: '54 Nguyễn Văn Linh, Hải Châu', weight: '12', startTime: '09:00', endTime: '10:00' },
-  { id: 'N2', address: '120 Trần Phú, Hải Châu', weight: '38', startTime: '09:00', endTime: '10:00' },
-  { id: 'N3', address: '15 Lê Duẩn, Thanh Khê', weight: '24', startTime: '10:00', endTime: '11:00' },
-  { id: 'N4', address: '233 Ngô Quyền, Sơn Trà', weight: '62', startTime: '10:00', endTime: '11:00' },
-  { id: 'N5', address: '78 Hoàng Diệu, Hải Châu', weight: '18', startTime: '09:30', endTime: '10:30' },
-  { id: 'N6', address: '9 Phan Châu Trinh, Hải Châu', weight: '45', startTime: '10:30', endTime: '11:30' },
-  { id: 'N7', address: '301 Điện Biên Phủ, Thanh Khê', weight: '31', startTime: '11:00', endTime: '12:00' },
-  { id: 'N8', address: '42 Nguyễn Tri Phương, Thanh Khê', weight: '27', startTime: '09:00', endTime: '11:00' },
-]
-
+export const initialOrders: Order[] = DATASETS[0].orders
 export const initialVehicles: Vehicle[] = [
   { id: 'truck-1', name: 'Truck 1', capacity: '80' },
   { id: 'truck-2', name: 'Truck 2', capacity: '100' },
   { id: 'truck-3', name: 'Truck 3', capacity: '60' },
 ]
 
-function RoutePlanner({ orders, setOrders, vehicles, setVehicles, isOptimizing, onBack, onOpenSettings, onRunOptimization }: RoutePlannerProps) {
+function RoutePlanner({ orders, setOrders, vehicles, setVehicles, isOptimizing, onBack, onOpenSettings, onRunOptimization, activeDataset, onDatasetChange }: RoutePlannerProps) {
   const totalDemand = orders.reduce((total, order) => total + (Number(order.weight) || 0), 0)
   const totalCapacity = vehicles.reduce((total, vehicle) => total + (Number(vehicle.capacity) || 0), 0)
+
+  const currentDatasetInfo = DATASETS.find((d) => d.key === activeDataset)
 
   const updateOrder = (id: string, field: keyof Order, value: string) => {
     setOrders((currentOrders) => currentOrders.map((order) => order.id === id ? { ...order, [field]: value } : order))
   }
 
   const addDeliveryPoint = () => {
-    const nextNode = Math.max(0, ...orders.map((order) => Number(order.id.replace('N', '')) || 0)) + 1
-    setOrders((currentOrders) => [...currentOrders, { id: `N${nextNode}`, address: '', weight: '', startTime: '09:00', endTime: '10:00' }])
+    const nextNode = Math.max(0, ...orders.map((order) => Number(order.id.replace(/[^0-9]/g, '')) || 0)) + 1
+    const prefix = activeDataset === 'demo' ? 'N' : 'R'
+    setOrders((currentOrders) => [...currentOrders, { id: `${prefix}${nextNode}`, address: '', weight: '', startTime: '09:00', endTime: '10:00' }])
   }
 
   const removeOrder = (id: string) => {
@@ -90,6 +86,27 @@ function RoutePlanner({ orders, setOrders, vehicles, setVehicles, isOptimizing, 
       <section className="workspace planner-workspace" aria-labelledby="route-planner-title">
         <div className="planner-intro">
           <div><p className="eyebrow">Route setup</p><h1 id="route-planner-title">Route Planner</h1><p className="subtitle">Configure delivery orders, time windows, and fleet capacity before running the optimization.</p></div>
+        </div>
+
+        {/* Dataset Selector */}
+        <div className="dataset-selector">
+          <div className="dataset-selector__label"><Database size={15} /><span>Dataset</span></div>
+          <div className="dataset-selector__options">
+            {DATASETS.map((ds) => (
+              <button
+                key={ds.key}
+                type="button"
+                className={`dataset-option ${activeDataset === ds.key ? 'dataset-option--active' : ''}`}
+                onClick={() => onDatasetChange(ds.key)}
+              >
+                <strong>{ds.label}</strong>
+                <small>{ds.description}</small>
+              </button>
+            ))}
+          </div>
+          {currentDatasetInfo && (
+            <p className="dataset-source">Source: {currentDatasetInfo.source}</p>
+          )}
         </div>
 
         <section className="planner-grid">

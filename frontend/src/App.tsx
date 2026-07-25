@@ -1,12 +1,13 @@
 import { useState, useCallback, useRef, type FormEvent } from 'react'
 import { BarChart3, Map, Navigation, PackageCheck, Route, Settings, TriangleAlert, Truck, type LucideIcon } from 'lucide-react'
 import BenchmarkAnalysis from './BenchmarkAnalysis'
+import { getDatasetByKey } from './datasets'
 import InitialRoutingResults from './InitialRoutingResults'
 import LiveDeliveryAndRouting from './LiveDeliveryAndRouting'
 import RoutePlanner, { initialOrders, initialVehicles, type Order, type Vehicle } from './RoutePlanner'
 import RoutingDetailsModal from './RoutingDetailsModal'
 import { AddNewOrderModal, ChangeAddressModal, type NewOrderDraft } from './SupportingStates'
-import { useRouteSimulation, DEPOT } from './useRouteSimulation'
+import { useRouteSimulation } from './useRouteSimulation'
 
 const API_BASE = 'http://localhost:8000'
 
@@ -87,13 +88,22 @@ function App() {
   const [routingDetailsOpen, setRoutingDetailsOpen] = useState(false)
   const [changeAddressOpen, setChangeAddressOpen] = useState(false)
   const [addNewOrderOpen, setAddNewOrderOpen] = useState(false)
+  const [activeDataset, setActiveDataset] = useState('demo')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Route simulation state — shared across Screen 03 and Screen 04
-  const { depot, stops, truckRoutes, totalDistance, addStop, addStopAuto } = useRouteSimulation()
+  const { depot, stops, truckRoutes, totalDistance, addStop, addStopAuto } = useRouteSimulation(activeDataset)
 
   // Track newly added stop IDs for distinct marker styling
   const [newStopIds, setNewStopIds] = useState<Set<string>>(new Set())
+
+  // Switch dataset: reset orders, vehicles stay the same
+  const handleDatasetChange = useCallback((key: string) => {
+    const ds = getDatasetByKey(key)
+    setActiveDataset(key)
+    setOrders(ds.orders)
+    setNewStopIds(new Set())
+  }, [])
 
   // Page navigation remains simple local React state; no router is used.
   const handleStartRouting = () => {
@@ -228,7 +238,7 @@ function App() {
         </section>
       </>}
 
-      {currentScreen === 'planner' && <RoutePlanner orders={orders} setOrders={setOrders} vehicles={vehicles} setVehicles={setVehicles} isOptimizing={isOptimizing} onBack={() => setCurrentScreen('overview')} onOpenSettings={() => setSettingsOpen(true)} onRunOptimization={runOptimization} />}
+      {currentScreen === 'planner' && <RoutePlanner orders={orders} setOrders={setOrders} vehicles={vehicles} setVehicles={setVehicles} isOptimizing={isOptimizing} onBack={() => setCurrentScreen('overview')} onOpenSettings={() => setSettingsOpen(true)} onRunOptimization={runOptimization} activeDataset={activeDataset} onDatasetChange={handleDatasetChange} />}
       {currentScreen === 'results' && <InitialRoutingResults isOptimizing={isOptimizing} onEditSetup={() => setCurrentScreen('planner')} onReRoute={runOptimization} onStartOperational={() => setCurrentScreen('live')} depot={depot} stops={stops} truckRoutes={truckRoutes} totalDistance={totalDistance} />}
       {currentScreen === 'live' && <LiveDeliveryAndRouting onChangeAddress={() => setChangeAddressOpen(true)} onAddNewOrder={() => setAddNewOrderOpen(true)} onEndDelivery={() => setCurrentScreen('overview')} onViewLogDetails={() => setRoutingDetailsOpen(true)} depot={depot} stops={stops} truckRoutes={truckRoutes} totalDistance={totalDistance} onMapClick={handleMapClick} newStopIds={newStopIds} />}
       {currentScreen === 'benchmark' && <BenchmarkAnalysis onBack={() => setCurrentScreen('overview')} />}
