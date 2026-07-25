@@ -118,6 +118,9 @@ Client Request → ErrorSanitization → SecurityHeaders → RequestSizeLimit
 
 ### Quick Start with Docker Compose:
 ```bash
+# Configure local values. Keep the copied .env file out of Git.
+cp .env.example .env
+
 # Build and run API + frontend
 docker compose up --build -d
 
