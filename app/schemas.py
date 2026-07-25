@@ -32,9 +32,32 @@ class Location(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DeliveryStop(Location):
+    """A delivery location with an integer load for the CVRP path."""
+
+    demand: int = Field(default=1, ge=0, le=10_000)
+
+
+class Vehicle(BaseModel):
+    id: str = Field(..., min_length=1, max_length=80)
+    name: str = Field(..., min_length=1, max_length=120)
+    capacity: int = Field(..., gt=0, le=100_000)
+
+    @field_validator("id", "name")
+    @classmethod
+    def text_must_not_be_blank(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("must not be blank")
+        return normalized
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class OptimizeRequest(BaseModel):
     depot: Location
-    stops: List[Location] = Field(..., min_length=1, max_length=MAX_OPTIMIZATION_STOPS)
+    stops: List[DeliveryStop] = Field(..., min_length=1, max_length=MAX_OPTIMIZATION_STOPS)
+    vehicles: Optional[List[Vehicle]] = Field(default=None, min_length=1, max_length=12)
     # Optional solver selection for comparison runs.
     # Allowed: nearest_neighbor, or_tools, qaoa.
     # QAOA is restricted to MAX_QAOA_STOPS small-TSP instances.
@@ -63,11 +86,18 @@ class OptimizeRequest(BaseModel):
             raise ValueError(
                 f"qaoa is validated for at most {MAX_QAOA_STOPS} stops per run"
             )
+        if self.vehicles:
+            vehicle_ids = [vehicle.id for vehicle in self.vehicles]
+            if len(set(vehicle_ids)) != len(vehicle_ids):
+                raise ValueError("vehicles must not contain duplicate ids")
+            if sum(stop.demand for stop in self.stops) > sum(vehicle.capacity for vehicle in self.vehicles):
+                raise ValueError("total vehicle capacity is below total delivery demand")
+            if any(stop.demand > max(vehicle.capacity for vehicle in self.vehicles) for stop in self.stops):
+                raise ValueError("a delivery demand exceeds every vehicle capacity")
+            if self.algorithms and "qaoa" in self.algorithms:
+                raise ValueError("qaoa is currently verified for single-vehicle TSP only; use OR-Tools CVRP for fleet runs")
         return self
 
-    # This endpoint is deliberately a single-depot TSP contract. Rejecting
-    # unknown fields prevents a frontend from silently pretending that a
-    # vehicles/fleet payload was optimized as a VRP.
     model_config = ConfigDict(extra="forbid")
 
 
@@ -101,6 +131,15 @@ class QuantumJobSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class FleetRouteSchema(BaseModel):
+    vehicle_id: str
+    vehicle_name: str
+    capacity: int
+    load: int
+    route: List[int]
+    distance_meters: float
+
+
 class RunStatusResponse(BaseModel):
     run_id: str
     status: str
@@ -112,6 +151,7 @@ class RunStatusResponse(BaseModel):
     depot_lon: float
     stops_count: int
     distance_metric: Optional[str] = None
+    fleet_routes: List[FleetRouteSchema] = Field(default_factory=list)
     results: List[BenchmarkResultSchema] = Field(default_factory=list)
     quantum_jobs: List[QuantumJobSchema] = Field(default_factory=list)
 

@@ -22,6 +22,9 @@ class BenchmarkRun(Base):
     # Exact metric used to construct this run's cost matrix. This is recorded
     # per run because road-network fetching may safely fall back to Haversine.
     distance_metric = Column(String, nullable=True)
+    # Serialized OR-Tools CVRP routes for a fleet run, indexed against
+    # [depot] + submitted stops. Empty/null for single-vehicle TSP runs.
+    fleet_routes = Column(Text, nullable=True)
 
     results = relationship(
         "BenchmarkResult", back_populates="run", cascade="all, delete-orphan")

@@ -41,8 +41,7 @@ export const initialOrders: Order[] = [
 ]
 
 export const initialVehicles: Vehicle[] = [
-  { id: 'truck-1', name: 'Truck 1', capacity: '60' },
-  { id: 'truck-2', name: 'Truck 2', capacity: '100' },
+  { id: 'truck-1', name: 'Truck 1', capacity: '100' },
 ]
 
 function RoutePlanner({

@@ -6,7 +6,7 @@ import LiveDeliveryAndRouting from './LiveDeliveryAndRouting'
 import RoutePlanner, { initialOrders, initialVehicles, type Order, type Vehicle } from './RoutePlanner'
 import RoutingDetailsModal from './RoutingDetailsModal'
 import { AddNewOrderModal, ChangeAddressModal, type NewOrderDraft } from './SupportingStates'
-import { getDemoPreset, useRouteSimulation, type DemoPresetId } from './useRouteSimulation'
+import { getDemoPreset, useRouteSimulation, type DemoPresetId, type OptimizedFleetRoute } from './useRouteSimulation'
 import {
   DEFAULT_SOLVER_ID,
   MAX_CLASSICAL_DEMO_STOPS,
@@ -267,6 +267,7 @@ function App() {
     renameStop,
     removeStop,
     replaceStops,
+    applyOptimizedFleetRoutes,
   } = useRouteSimulation()
   const [newStopIds, setNewStopIds] = useState<Set<string>>(new Set())
   const selectedSolver = getSolverOption(solverId)
@@ -275,6 +276,14 @@ function App() {
     localStorage.setItem('quasar-theme', theme)
     localStorage.setItem('quasar-font-scale', fontScale)
   }, [theme, fontScale])
+
+  // The verified quantum encoding is single-vehicle TSP. Keep fleet mode on
+  // the production OR-Tools CVRP solver instead of presenting a false QAOA run.
+  useEffect(() => {
+    if (vehicles.length > 1 && getSolverOption(solverId).algorithms.includes('qaoa')) {
+      setSolverId('or_tools')
+    }
+  }, [vehicles.length, solverId])
 
   const handleStartRouting = () => {
     setCurrentScreen('planner')
@@ -319,9 +328,13 @@ function App() {
       return
     }
 
+    const demandById = new globalThis.Map(orders.map((order) => [order.id, Math.max(0, Number(order.weight) || 0)]))
     const payload = {
       depot: { name: depot.name, lat: depot.lat, lon: depot.lon },
-      stops: stops.map((stop) => ({ name: stop.name, lat: stop.lat, lon: stop.lon })),
+      stops: stops.map((stop) => ({ name: stop.name, lat: stop.lat, lon: stop.lon, demand: demandById.get(stop.id) || 0 })),
+      vehicles: vehicles.length > 1
+        ? vehicles.map((vehicle) => ({ id: vehicle.id, name: vehicle.name, capacity: Number(vehicle.capacity) || 0 }))
+        : undefined,
       algorithms: solver.algorithms,
     }
 
@@ -362,6 +375,7 @@ function App() {
           }>
           stops_count: number
           distance_metric?: string | null
+          fleet_routes?: OptimizedFleetRoute[]
         }
         if (statusBody.status === 'FAILED') {
           throw new Error(statusBody.error_message || 'Optimization failed')
@@ -387,6 +401,7 @@ function App() {
             stopsCount: statusBody.stops_count,
             distanceMetric: statusBody.distance_metric ?? null,
           })
+          applyOptimizedFleetRoutes(statusBody.fleet_routes || [])
           completed = true
           break
         }
@@ -403,7 +418,7 @@ function App() {
     } finally {
       setIsOptimizing(false)
     }
-  }, [solverId, depot, stops])
+  }, [solverId, depot, stops, orders, vehicles, applyOptimizedFleetRoutes])
 
   const addPlannerDeliveryPoint = useCallback(() => {
     if (stops.length >= MAX_CLASSICAL_DEMO_STOPS) {
@@ -432,14 +447,14 @@ function App() {
     setVehicles(preset.stops.length <= 3
       ? initialVehicles
       : [
-          { id: 'truck-1', name: 'Truck 1', capacity: '80' },
-          { id: 'truck-2', name: 'Truck 2', capacity: '100' },
-          { id: 'truck-3', name: 'Truck 3', capacity: '120' },
+          { id: 'truck-1', name: 'Truck 1', capacity: '70' },
+          { id: 'truck-2', name: 'Truck 2', capacity: '70' },
+          { id: 'truck-3', name: 'Truck 3', capacity: '70' },
         ])
     setNewStopIds(new Set())
     setOptimizeError(null)
     if (preset.stops.length > MAX_QAOA_STOPS && getSolverOption(solverId).algorithms.includes('qaoa')) {
-      setSolverId(DEFAULT_SOLVER_ID)
+      setSolverId('or_tools')
     }
   }, [replaceStops, solverId])
 

@@ -24,6 +24,15 @@ export type TruckRoute = {
   roadDistance: number
 }
 
+export type OptimizedFleetRoute = {
+  vehicle_id: string
+  vehicle_name: string
+  capacity: number
+  load: number
+  route: number[]
+  distance_meters: number
+}
+
 export type DemoPresetId = 'quantum-3' | 'city-5' | 'fleet-8'
 
 type DemoPreset = {
@@ -191,6 +200,10 @@ export function useRouteSimulation() {
   const replaceStops = useCallback((nextStops: MapLocation[]) => {
     setStops(nextStops.map((stop) => ({ ...stop })))
   }, [])
+  const [optimizedFleetRoutes, setOptimizedFleetRoutes] = useState<OptimizedFleetRoute[] | null>(null)
+  const applyOptimizedFleetRoutes = useCallback((routes: OptimizedFleetRoute[]) => {
+    setOptimizedFleetRoutes(routes.length > 0 ? routes : null)
+  }, [])
 
   /** Add a new stop at a specific lat/lon (e.g. user clicked the map). */
   const addStop = useCallback((lat: number, lon: number, label?: string) => {
@@ -233,8 +246,27 @@ export function useRouteSimulation() {
     setStops((previous) => previous.filter((stop) => stop.id !== id))
   }, [])
 
-  /** Split stops across two trucks and compute greedy waypoint order. */
+  // A newly edited stop invalidates any previously returned backend route.
+  useEffect(() => {
+    setOptimizedFleetRoutes(null)
+  }, [stops])
+
+  /** Use the verified backend fleet allocation when present; otherwise show a preview. */
   const baseRoutes = useMemo(() => {
+    if (optimizedFleetRoutes) {
+      const colors = ['#2563eb', '#16a34a', '#9333ea', '#ea580c', '#0891b2']
+      return optimizedFleetRoutes.filter((route) => route.route.length > 2).map((route, index) => {
+        const waypoints = route.route.map((node) => node === 0 ? DEPOT : stops[node - 1]).filter(Boolean) as MapLocation[]
+        return {
+          truckId: route.vehicle_id,
+          truckName: route.vehicle_name,
+          capacity: `${route.load} / ${route.capacity} kg`,
+          color: colors[index % colors.length],
+          waypoints,
+          orderIds: route.route.filter((node) => node !== 0).map((node) => stops[node - 1]?.id).filter(Boolean),
+        }
+      })
+    }
     const half = Math.ceil(stops.length / 2)
     const truck1Stops = stops.slice(0, half)
     const truck2Stops = stops.slice(half)
@@ -264,7 +296,7 @@ export function useRouteSimulation() {
     }
 
     return routes
-  }, [stops])
+  }, [stops, optimizedFleetRoutes])
 
   // Fetch real road geometry from OSRM for each truck route
   const [truckRoutes, setTruckRoutes] = useState<TruckRoute[]>([])
@@ -335,5 +367,6 @@ export function useRouteSimulation() {
     renameStop,
     removeStop,
     replaceStops,
+    applyOptimizedFleetRoutes,
   }
 }

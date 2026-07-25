@@ -26,6 +26,7 @@ logger = logging.getLogger("quasar.pipeline")
 # OR-Tools availability flag (solver lives in services.classical_solver)
 try:
     import ortools  # noqa: F401
+    from ortools.constraint_solver import routing_enums_pb2, pywrapcp
     OR_TOOLS_AVAILABLE = True
 except ImportError:
     OR_TOOLS_AVAILABLE = False
@@ -151,6 +152,83 @@ def solve_or_tools(dist_matrix: np.ndarray) -> tuple[list[int], float, float]:
     return ort_tour, dist, t_ms
 
 
+def solve_or_tools_cvrp(
+    dist_matrix: np.ndarray,
+    demands: list[int],
+    vehicles: list[dict],
+) -> tuple[list[dict], float, float]:
+    """Solve a capacitated multi-vehicle route using OR-Tools routing.
+
+    Each route includes depot node 0 at both ends. This is deliberately a
+    classical path: the current quantum encoding is single-vehicle TSP only.
+    """
+    if not OR_TOOLS_AVAILABLE:
+        raise RuntimeError("OR-Tools is required for multi-vehicle CVRP runs")
+    if len(demands) != len(dist_matrix):
+        raise ValueError("demands must align with the distance matrix")
+
+    manager = pywrapcp.RoutingIndexManager(len(dist_matrix), len(vehicles), 0)
+    routing = pywrapcp.RoutingModel(manager)
+
+    def distance_callback(from_index, to_index):
+        return int(dist_matrix[manager.IndexToNode(from_index)][manager.IndexToNode(to_index)])
+
+    def demand_callback(index):
+        return int(demands[manager.IndexToNode(index)])
+
+    transit_index = routing.RegisterTransitCallback(distance_callback)
+    demand_index = routing.RegisterUnaryTransitCallback(demand_callback)
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_index)
+    routing.AddDimensionWithVehicleCapacity(
+        demand_index, 0, [int(vehicle["capacity"]) for vehicle in vehicles], True, "Capacity"
+    )
+
+    parameters = pywrapcp.DefaultRoutingSearchParameters()
+    parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+    parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+    parameters.time_limit.seconds = 3
+
+    started = time.time()
+    solution = routing.SolveWithParameters(parameters)
+    elapsed_ms = (time.time() - started) * 1000.0
+    if not solution:
+        raise ValueError("OR-Tools found no capacity-feasible fleet solution")
+
+    fleet_routes: list[dict] = []
+    total_distance = 0
+    served_nodes: list[int] = []
+    for vehicle_index, vehicle in enumerate(vehicles):
+        index = routing.Start(vehicle_index)
+        route = [manager.IndexToNode(index)]
+        distance = 0
+        load = 0
+        while not routing.IsEnd(index):
+            next_index = solution.Value(routing.NextVar(index))
+            next_node = manager.IndexToNode(next_index)
+            distance += int(dist_matrix[manager.IndexToNode(index)][next_node])
+            if next_node != 0:
+                load += int(demands[next_node])
+                served_nodes.append(next_node)
+            route.append(next_node)
+            index = next_index
+        total_distance += distance
+        fleet_routes.append({
+            "vehicle_id": vehicle["id"],
+            "vehicle_name": vehicle["name"],
+            "capacity": int(vehicle["capacity"]),
+            "load": load,
+            "route": route,
+            "distance_meters": float(distance),
+        })
+
+    expected = set(range(1, len(dist_matrix)))
+    if set(served_nodes) != expected or len(served_nodes) != len(expected):
+        raise ValueError("CVRP validation failed: stops were not served exactly once")
+    if any(route["load"] > route["capacity"] for route in fleet_routes):
+        raise ValueError("CVRP validation failed: a vehicle capacity was exceeded")
+    return fleet_routes, float(total_distance), elapsed_ms
+
+
 def solve_nearest_neighbor(dist_matrix: np.ndarray) -> tuple[list[int], float, float]:
     """Classical nearest-neighbor TSP. Returns (tour, distance, wall_clock_ms)."""
     t0 = time.time()
@@ -264,6 +342,7 @@ def run_optimization_pipeline(
     run_id: str,
     depot: dict,
     stops: list[dict],
+    vehicles: list[dict] | None = None,
     algorithms: list[str] | None = None,
 ):
     """
@@ -295,11 +374,32 @@ def run_optimization_pipeline(
         points = [depot] + stops
         n = len(points)
 
+        is_fleet_run = bool(vehicles)
+        if is_fleet_run and needs_quantum:
+            raise ValueError("QAOA is not available for multi-vehicle CVRP runs")
         baseline_dist = None
         ort_tour = None
         ort_dist = None
 
-        if "nearest_neighbor" in selected:
+        if is_fleet_run:
+            fleet_routes, fleet_distance, fleet_time_ms = solve_or_tools_cvrp(
+                dist_matrix,
+                [0] + [int(stop.get("demand", 1)) for stop in stops],
+                vehicles or [],
+            )
+            run.fleet_routes = json.dumps(fleet_routes)
+            db.add(BenchmarkResult(
+                run_id=run_id,
+                algorithm="OR-Tools CVRP",
+                tour=json.dumps([]),
+                distance_meters=fleet_distance,
+                is_valid=True,
+                validation_error=None,
+                approximation_ratio=1.0,
+                execution_time_ms=fleet_time_ms,
+            ))
+            db.commit()
+        elif "nearest_neighbor" in selected:
             nn_tour, nn_dist, nn_time_ms = solve_nearest_neighbor(dist_matrix)
             is_val, val_err = validate_tour(nn_tour, n)
             if baseline_dist is None and nn_dist > 0:
@@ -323,7 +423,7 @@ def run_optimization_pipeline(
                 f"Nearest Neighbor ({nn_dist}m)", "blue",
             )
 
-        if "or_tools" in selected or needs_quantum:
+        if not is_fleet_run and ("or_tools" in selected or needs_quantum):
             ort_tour, ort_dist, ort_time_ms = solve_or_tools(dist_matrix)
             is_val, val_err = validate_tour(ort_tour, n)
             if ort_dist and ort_dist > 0:

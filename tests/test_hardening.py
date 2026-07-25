@@ -47,11 +47,21 @@ class InputHardeningTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             OptimizeRequest.model_validate({**base, "algorithms": ["qaoa", "qaoa"]})
 
-    def test_rejects_vehicle_payload_until_a_real_vrp_contract_exists(self):
+    def test_accepts_capacity_feasible_vehicle_payload(self):
         payload = {
             "depot": {"name": "Depot", "lat": 16.0, "lon": 108.0},
-            "stops": [{"name": "Stop", "lat": 16.1, "lon": 108.1}],
-            "vehicles": [{"id": "truck-1", "capacity_kg": 100}],
+            "stops": [{"name": "Stop", "lat": 16.1, "lon": 108.1, "demand": 20}],
+            "vehicles": [{"id": "truck-1", "name": "Truck 1", "capacity": 100}],
+        }
+        request = OptimizeRequest.model_validate(payload)
+        self.assertEqual(request.vehicles[0].capacity, 100)
+
+    def test_rejects_qaoa_for_vehicle_routing(self):
+        payload = {
+            "depot": {"name": "Depot", "lat": 16.0, "lon": 108.0},
+            "stops": [{"name": "Stop", "lat": 16.1, "lon": 108.1, "demand": 20}],
+            "vehicles": [{"id": "truck-1", "name": "Truck 1", "capacity": 100}],
+            "algorithms": ["qaoa"],
         }
         with self.assertRaises(ValidationError):
             OptimizeRequest.model_validate(payload)

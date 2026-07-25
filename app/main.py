@@ -61,9 +61,11 @@ async def lifespan(app: FastAPI):
     # Keep this additive migration local, idempotent, and safe for old runs.
     if engine.dialect.name == "sqlite":
         columns = {column["name"] for column in inspect(engine).get_columns("benchmark_runs")}
-        if "distance_metric" not in columns:
-            with engine.begin() as connection:
+        with engine.begin() as connection:
+            if "distance_metric" not in columns:
                 connection.execute(text("ALTER TABLE benchmark_runs ADD COLUMN distance_metric VARCHAR"))
+            if "fleet_routes" not in columns:
+                connection.execute(text("ALTER TABLE benchmark_runs ADD COLUMN fleet_routes TEXT"))
     logger.info("Database schema initialized.")
 
     # Ensure static directory exists for Folium maps
@@ -433,6 +435,7 @@ def optimize_route(
         run_id=run_id,
         depot=request.depot.dict(),
         stops=[s.dict() for s in request.stops],
+        vehicles=[vehicle.dict() for vehicle in request.vehicles] if request.vehicles else None,
         algorithms=request.algorithms,
     )
 
@@ -505,6 +508,7 @@ def get_run_status(run_id: str, db: Session = Depends(get_db)):
         depot_lon=run.depot_lon,
         stops_count=run.stops_count,
         distance_metric=run.distance_metric,
+        fleet_routes=json.loads(run.fleet_routes) if run.fleet_routes else [],
         results=results_schema,
         quantum_jobs=jobs_schema,
     )
