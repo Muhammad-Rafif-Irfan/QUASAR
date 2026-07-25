@@ -96,6 +96,10 @@ type SettingsModalProps = {
 }
 
 function ApplicationHeader({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const currentDate = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  }).format(new Date())
+
   return (
     <header className="topbar">
       <a className="brand" href="#overview" aria-label="Quasar home">
@@ -109,6 +113,8 @@ function ApplicationHeader({ onOpenSettings }: { onOpenSettings: () => void }) {
         <span>QUASAR</span>
       </a>
       <div className="topbar-meta">
+        <span className="system-status">Connected</span>
+        <span>{currentDate}</span>
         <button type="button" className="settings-button header-settings" onClick={onOpenSettings}>
           <Settings size={15} /> Settings
         </button>
@@ -501,9 +507,6 @@ function App() {
                 <p className="subtitle">Monitor current deliveries, fleet capacity, and route status.</p>
               </div>
               <div className="page-actions">
-                <button className="settings-button" onClick={() => setSettingsOpen(true)}>
-                  <Settings size={16} /> Settings
-                </button>
                 <button className="settings-button" onClick={() => setCurrentScreen('benchmark')}>
                   <BarChart3 size={16} /> Benchmark
                 </button>
