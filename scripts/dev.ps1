@@ -16,6 +16,24 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+function Import-LocalEnv([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    Get-Content -LiteralPath $Path | ForEach-Object {
+        $line = $_.Trim()
+        if (-not $line -or $line.StartsWith("#") -or -not $line.Contains("=")) { return }
+        $name, $value = $line.Split("=", 2)
+        $name = $name.Trim()
+        $value = $value.Trim().Trim('"').Trim("'")
+        if ($name -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') { return }
+        # Explicit shell values win over the local .env file.
+        if (-not (Test-Path "Env:$name")) {
+            Set-Item -Path "Env:$name" -Value $value
+        }
+    }
+}
+
+Import-LocalEnv (Join-Path $Root ".env")
+
 function Resolve-NpmCmd {
     $cmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }

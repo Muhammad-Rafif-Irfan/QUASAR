@@ -134,6 +134,9 @@ docker compose logs -f quasar-api quasar-frontend
 docker compose down
 ```
 
+`docker compose` loads `.env` automatically; `scripts/dev.ps1` also loads it
+without overwriting values you already exported in the shell.
+
 ### Manual Docker Build:
 ```bash
 docker build -t quasar-api:latest .

@@ -18,6 +18,15 @@ import {
 type Screen = 'overview' | 'planner' | 'results' | 'live' | 'benchmark'
 type Theme = 'light' | 'dark'
 type FontScale = 'standard' | 'large' | 'xlarge'
+type QuantumConnection = {
+  status: string
+  env_file_present: boolean
+  token_configured: boolean
+  token_variable?: string | null
+  backend_name?: string | null
+  backend_qubits?: number | null
+  message: string
+}
 
 type Metric = {
   label: string
@@ -73,6 +82,9 @@ type SettingsModalProps = {
   onThemeChange: (theme: Theme) => void
   fontScale: FontScale
   onFontScaleChange: (scale: FontScale) => void
+  quantumConnection: QuantumConnection | null
+  isCheckingQuantumConnection: boolean
+  onCheckQuantumConnection: () => void
   onSave: (event: FormEvent<HTMLFormElement>) => void
   onClose: () => void
 }
@@ -99,7 +111,7 @@ function ApplicationHeader() {
   )
 }
 
-function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontScale, onFontScaleChange, onSave, onClose }: SettingsModalProps) {
+function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontScale, onFontScaleChange, quantumConnection, isCheckingQuantumConnection, onCheckQuantumConnection, onSave, onClose }: SettingsModalProps) {
   const selected = getSolverOption(solverId)
   return (
     <div className="modal-backdrop" role="presentation">
@@ -174,6 +186,20 @@ function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontSca
               </select>
             </label>
           </fieldset>
+          <fieldset className="quantum-connection-settings">
+            <legend>IBM Quantum connection</legend>
+            <p>Checks whether this API process received a token and performs a read-only backend lookup. No circuit is submitted.</p>
+            <button type="button" className="settings-button" onClick={onCheckQuantumConnection} disabled={isCheckingQuantumConnection}>
+              {isCheckingQuantumConnection ? 'Checking IBM Quantum…' : 'Check IBM Quantum connection'}
+            </button>
+            {quantumConnection && (
+              <p className={`quantum-connection-status status-${quantumConnection.status}`} role="status">
+                <strong>{quantumConnection.status.replaceAll('_', ' ')}</strong> — {quantumConnection.message}
+                {quantumConnection.backend_name && ` Backend: ${quantumConnection.backend_name} (${quantumConnection.backend_qubits} qubits).`}
+                {!quantumConnection.token_configured && ` .env visible: ${quantumConnection.env_file_present ? 'yes' : 'no'}.`}
+              </p>
+            )}
+          </fieldset>
         </div>
         <p className="settings-solver-hint">{selected.description}</p>
         <div className="settings-actions">
@@ -205,6 +231,8 @@ function App() {
     const saved = localStorage.getItem('quasar-font-scale')
     return saved === 'large' || saved === 'xlarge' ? saved : 'standard'
   })
+  const [quantumConnection, setQuantumConnection] = useState<QuantumConnection | null>(null)
+  const [isCheckingQuantumConnection, setIsCheckingQuantumConnection] = useState(false)
   const [orders, setOrders] = useState<Order[]>(initialOrders)
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles)
   const [currentScreen, setCurrentScreen] = useState<Screen>('overview')
@@ -242,6 +270,24 @@ function App() {
     event.preventDefault()
     setSettingsOpen(false)
   }
+
+  const checkQuantumConnection = useCallback(async () => {
+    setIsCheckingQuantumConnection(true)
+    try {
+      const response = await fetch('/api/v1/quantum/connection-check', { method: 'POST' })
+      if (!response.ok) throw new Error(`Connection check failed (${response.status})`)
+      setQuantumConnection(await response.json() as QuantumConnection)
+    } catch (error) {
+      setQuantumConnection({
+        status: 'api_unreachable',
+        env_file_present: false,
+        token_configured: false,
+        message: error instanceof Error ? error.message : 'Could not reach the QUASAR API.',
+      })
+    } finally {
+      setIsCheckingQuantumConnection(false)
+    }
+  }, [])
 
   const runOptimization = useCallback(async () => {
     setIsOptimizing(true)
@@ -569,6 +615,9 @@ function App() {
           onThemeChange={setTheme}
           fontScale={fontScale}
           onFontScaleChange={setFontScale}
+          quantumConnection={quantumConnection}
+          isCheckingQuantumConnection={isCheckingQuantumConnection}
+          onCheckQuantumConnection={() => { void checkQuantumConnection() }}
           onSave={handleSaveSettings}
           onClose={() => setSettingsOpen(false)}
         />

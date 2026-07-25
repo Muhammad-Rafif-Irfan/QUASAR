@@ -1,7 +1,9 @@
 """Focused regression tests for API input and rate-limit hardening."""
 
 import asyncio
+import os
 import unittest
+from unittest.mock import patch
 
 from pydantic import ValidationError
 from starlette.requests import Request
@@ -9,6 +11,7 @@ from starlette.responses import Response
 
 from app.middleware import rate_limiter
 from app.middleware.rate_limiter import RateLimitMiddleware, SlidingWindowRateLimiter, _get_client_ip
+from app.main import check_quantum_connection
 from app.schemas import MAX_OPTIMIZATION_STOPS, MAX_QAOA_STOPS, OptimizeRequest
 
 
@@ -136,6 +139,20 @@ class RateLimitHardeningTests(unittest.TestCase):
             rate_limiter._global_limiter = original_limiter
 
         self.assertEqual(response.status_code, 200)
+
+
+class QuantumConnectionTests(unittest.TestCase):
+    def test_connection_check_does_not_expose_or_require_a_token(self):
+        with patch.dict(
+            os.environ,
+            {"IBM_QUANTUM_TOKEN": "", "QISKIT_IBM_TOKEN": ""},
+            clear=False,
+        ):
+            result = check_quantum_connection()
+
+        self.assertEqual(result.status, "not_configured")
+        self.assertFalse(result.token_configured)
+        self.assertIsNone(result.token_variable)
 
 
 if __name__ == "__main__":

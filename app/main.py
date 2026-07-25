@@ -206,6 +206,76 @@ def health_check():
     }
 
 
+@app.post(
+    "/api/v1/quantum/connection-check",
+    response_model=schemas.QuantumConnectionResponse,
+    status_code=status.HTTP_200_OK,
+)
+def check_quantum_connection():
+    """Verify IBM Quantum credentials without returning or logging a token.
+
+    This intentionally performs a small read-only IBM Runtime request. It does
+    not submit a circuit or consume QPU time; a real QPU run still happens only
+    through the bounded QAOA optimization endpoint.
+    """
+    env_file_present = os.path.isfile(".env")
+    token_variable = next(
+        (
+            name
+            for name in ("IBM_QUANTUM_TOKEN", "QISKIT_IBM_TOKEN")
+            if os.environ.get(name)
+        ),
+        None,
+    )
+    if token_variable is None:
+        return schemas.QuantumConnectionResponse(
+            status="not_configured",
+            env_file_present=env_file_present,
+            token_configured=False,
+            message=(
+                "No IBM Quantum token is available to this API process. "
+                "Copy .env.example to .env, configure one token, then restart the API."
+            ),
+        )
+
+    try:
+        from qiskit_ibm_runtime import QiskitRuntimeService
+
+        service = QiskitRuntimeService(
+            channel="ibm_quantum_platform",
+            token=os.environ[token_variable],
+        )
+        backends = service.backends(operational=True, simulator=False)
+        if not backends:
+            return schemas.QuantumConnectionResponse(
+                status="connected_no_backend",
+                env_file_present=env_file_present,
+                token_configured=True,
+                token_variable=token_variable,
+                message="IBM Quantum accepted the token, but no operational hardware backend is currently available.",
+            )
+
+        backend = min(backends, key=lambda candidate: candidate.status().pending_jobs)
+        return schemas.QuantumConnectionResponse(
+            status="connected",
+            env_file_present=env_file_present,
+            token_configured=True,
+            token_variable=token_variable,
+            backend_name=backend.name,
+            backend_qubits=backend.num_qubits,
+            message="IBM Quantum connection verified. No circuit was submitted.",
+        )
+    except Exception:
+        logger.warning("IBM Quantum connection check failed", exc_info=True)
+        return schemas.QuantumConnectionResponse(
+            status="connection_failed",
+            env_file_present=env_file_present,
+            token_configured=True,
+            token_variable=token_variable,
+            message="IBM Quantum could not verify this token or fetch an operational backend. Check the token and account access.",
+        )
+
+
 @app.get(
     "/api/v1/inspect",
     response_model=schemas.InspectResponse,
@@ -288,6 +358,7 @@ def inspect_runtime(db: Session = Depends(get_db)):
             "GET /",
             "GET /health",
             "GET /api/v1/inspect",
+            "POST /api/v1/quantum/connection-check",
             "POST /api/v1/optimize",
             "GET /api/v1/optimize/{run_id}",
             "GET /docs",

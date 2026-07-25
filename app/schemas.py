@@ -143,3 +143,15 @@ class InspectResponse(BaseModel):
     endpoints: List[str]
     recent_runs: List[InspectRecentRun]
     notes: List[str]
+
+
+class QuantumConnectionResponse(BaseModel):
+    """Safe, token-free result for the IBM Quantum connectivity check."""
+
+    status: str
+    env_file_present: bool
+    token_configured: bool
+    token_variable: Optional[str] = None
+    backend_name: Optional[str] = None
+    backend_qubits: Optional[int] = None
+    message: str

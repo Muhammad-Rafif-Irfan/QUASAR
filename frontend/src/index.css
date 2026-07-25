@@ -197,6 +197,13 @@ button { cursor: pointer; }
 .accessibility-settings legend { padding: 0 4px; color: #475569; font-size: 11px; font-weight: 700; }
 .accessibility-settings label { display: grid; gap: 6px; color: #475569; font-size: 10px; font-weight: 600; }
 .accessibility-settings label:last-child { grid-column: auto; max-width: none; }
+.quantum-connection-settings { display: grid; grid-column: 1 / -1; gap: 10px; margin: 0; padding: 12px; border: 1px solid #dfe3e8; border-radius: 6px; }
+.quantum-connection-settings legend { padding: 0 4px; color: #475569; font-size: 11px; font-weight: 700; }
+.quantum-connection-settings p { margin: 0; color: #64748b; font-size: 11px; line-height: 1.45; }
+.quantum-connection-settings .settings-button { justify-self: start; }
+.quantum-connection-status { padding: 8px 10px; border-radius: 6px; background: #f8fafc; }
+.quantum-connection-status.status-connected { color: #166534; background: #f0fdf4; }
+.quantum-connection-status.status-not_configured, .quantum-connection-status.status-connection_failed, .quantum-connection-status.status-api_unreachable { color: #9a3412; background: #fff7ed; }
 .accessibility-settings select { width: 100%; min-height: 36px; padding: 0 9px; border: 1px solid #cbd5e1; border-radius: 6px; color: #1e293b; background: #fff; }
 
 /* Theme overrides keep surfaces, controls, and data-heavy views legible. */
@@ -207,6 +214,7 @@ button { cursor: pointer; }
 .theme-dark .subtitle, .theme-dark .eyebrow, .theme-dark .section-label, .theme-dark .topbar-meta, .theme-dark .system-status, .theme-dark .metric-label, .theme-dark .metric small, .theme-dark .history-record > span, .theme-dark .history-record small, .theme-dark .activity-item time, .theme-dark .activity-item p small, .theme-dark .planner-summary span, .theme-dark .planner-solver-bar p, .theme-dark .settings-copy, .theme-dark .settings-solver-hint { color: #aebdd0; }
 .theme-dark .settings-button, .theme-dark .cancel-settings, .theme-dark .modal-close, .theme-dark .avatar, .theme-dark .planner-table-row input, .theme-dark .planner-table-row label, .theme-dark .planner-solver-bar, .theme-dark .planner-solver-bar select, .theme-dark .settings-fields input, .theme-dark .settings-fields select, .theme-dark .accessibility-settings select { border-color: #475569; color: #e2e8f0; background: #1e293b; }
 .theme-dark .accessibility-settings { border-color: #475569; }.theme-dark .accessibility-settings legend, .theme-dark .accessibility-settings label { color: #cbd5e1; }
+.theme-dark .quantum-connection-settings { border-color: #475569; }.theme-dark .quantum-connection-settings legend { color: #cbd5e1; }.theme-dark .quantum-connection-settings p { color: #aebdd0; }.theme-dark .quantum-connection-status { background: #1e293b; }.theme-dark .quantum-connection-status.status-connected { color: #86efac; }.theme-dark .quantum-connection-status.status-not_configured, .theme-dark .quantum-connection-status.status-connection_failed, .theme-dark .quantum-connection-status.status-api_unreachable { color: #fdba74; }
 .theme-dark .planner-table-row, .theme-dark .history-record, .theme-dark .activity-item, .theme-dark .history-summary, .theme-dark .planner-summary span { border-color: #334155; }
 .theme-dark .planner-nav-item:hover:not(:disabled) { color: #e2e8f0; background: #1e293b; }.theme-dark .planner-nav-item.is-active { color: #dbeafe; background: #1e3a5f; }
 
