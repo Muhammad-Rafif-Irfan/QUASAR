@@ -135,9 +135,7 @@ function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontSca
           </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close settings">&times;</button>
         </div>
-        <p className="settings-copy">
-          Choose a classical heuristic, a quantum solver, or run a full side-by-side comparison.
-        </p>
+        <p className="settings-copy">Only the algorithm selector changes this UI. Quantum execution policy is enforced by the API, not by decorative local fields.</p>
         <div className="settings-fields">
           <label>
             Algorithm
@@ -164,22 +162,12 @@ function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontSca
               </optgroup>
             </select>
           </label>
-          <label>
-            Number of layers
-            <input defaultValue="5" inputMode="numeric" />
-          </label>
-          <label>
-            Quantum backend
-            <input defaultValue="AerSimulator / IBM QPU" />
-          </label>
-          <label>
-            Parameter alpha
-            <input defaultValue="0.73" inputMode="decimal" />
-          </label>
-          <label>
-            Parameter beta
-            <input defaultValue="0.27" inputMode="decimal" />
-          </label>
+          <fieldset className="execution-policy-settings">
+            <legend>Execution policy</legend>
+            <p><strong>Fleet routing:</strong> OR-Tools CVRP with capacity constraints; QAOA is not applied.</p>
+            <p><strong>Quantum scope:</strong> one vehicle and at most 3 stops. The API reads its QAOA iteration budget from <code>.env</code>.</p>
+            <p><strong>Backend:</strong> IBM QPU only when the connection check finds an operational backend; otherwise bounded QAOA uses a local simulator.</p>
+          </fieldset>
           <fieldset className="accessibility-settings">
             <legend>Accessibility</legend>
             <label>
@@ -256,6 +244,7 @@ function App() {
   const [runEvidence, setRunEvidence] = useState<RunEvidence | null>(null)
   const [quantumJobs, setQuantumJobs] = useState<QuantumJob[]>([])
   const [optimizeError, setOptimizeError] = useState<string | null>(null)
+  const [rerouteAfterStateChange, setRerouteAfterStateChange] = useState(false)
 
   const {
     depot,
@@ -265,6 +254,7 @@ function App() {
     addStop,
     addStopAuto,
     renameStop,
+    updateStopLocation,
     removeStop,
     replaceStops,
     applyOptimizedFleetRoutes,
@@ -420,6 +410,12 @@ function App() {
     }
   }, [solverId, depot, stops, orders, vehicles, applyOptimizedFleetRoutes])
 
+  useEffect(() => {
+    if (!rerouteAfterStateChange || isOptimizing) return
+    setRerouteAfterStateChange(false)
+    void runOptimization()
+  }, [rerouteAfterStateChange, isOptimizing, runOptimization])
+
   const addPlannerDeliveryPoint = useCallback(() => {
     if (stops.length >= MAX_CLASSICAL_DEMO_STOPS) {
       setOptimizeError(`The classical demo is capped at ${MAX_CLASSICAL_DEMO_STOPS} stops.`)
@@ -462,11 +458,13 @@ function App() {
     removeStop(id)
   }, [removeStop])
 
-  const updateAffectedAddress = (address: string) => {
+  const updateAffectedAddress = ({ address, lat, lon }: { address: string; lat: number; lon: number }) => {
     setOrders((currentOrders) => currentOrders.map((order) => (
       order.id === 'N4' ? { ...order, address } : order
     )))
+    updateStopLocation('N4', address, lat, lon)
     setChangeAddressOpen(false)
+    setRerouteAfterStateChange(true)
   }
 
   const addLiveOrder = useCallback((draft: NewOrderDraft, shouldReRoute: boolean) => {
@@ -486,9 +484,9 @@ function App() {
     setNewStopIds((prev) => new Set(prev).add(newId))
     setAddNewOrderOpen(false)
     if (shouldReRoute) {
-      void runOptimization()
+      setRerouteAfterStateChange(true)
     }
-  }, [orders, addStopAuto, runOptimization])
+  }, [orders, addStopAuto])
 
   const handleMapClick = useCallback((latlng: { lat: number; lon: number }) => {
     const nextNode = Math.max(0, ...orders.map((order) => Number(order.id.replace('N', '')) || 0)) + 1
@@ -652,6 +650,9 @@ function App() {
           stops={stops}
           truckRoutes={truckRoutes}
           totalDistance={totalDistance}
+          solverObjectiveMeters={comparisonRows.length ? Math.min(...comparisonRows.map((row) => row.distanceMeters)) : null}
+          distanceMetric={runEvidence?.distanceMetric ?? null}
+          runId={runEvidence?.runId ?? null}
           onMapClick={handleMapClick}
           newStopIds={newStopIds}
         />

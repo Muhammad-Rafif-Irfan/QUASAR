@@ -11,6 +11,9 @@ type LiveDeliveryProps = {
   stops: MapLocation[]
   truckRoutes: TruckRoute[]
   totalDistance: number
+  solverObjectiveMeters: number | null
+  distanceMetric: string | null
+  runId: string | null
   onMapClick: (latlng: { lat: number; lon: number }) => void
   newStopIds: Set<string>
 }
@@ -25,14 +28,17 @@ function LiveDeliveryAndRouting({
   stops,
   truckRoutes,
   totalDistance,
+  solverObjectiveMeters,
+  distanceMetric,
+  runId,
   onMapClick,
   newStopIds,
 }: LiveDeliveryProps) {
   const routingOverview = [
     { label: 'Active vehicles', value: String(truckRoutes.length) },
     { label: 'Delivery stops', value: String(stops.length) },
-    { label: 'Total distance', value: `${(totalDistance / 1000).toFixed(1)} km` },
-    { label: 'Route status', value: 'LIVE', status: 'resolved' },
+    { label: 'Solver objective', value: solverObjectiveMeters == null ? '—' : `${(solverObjectiveMeters / 1000).toFixed(2)} km`, detail: distanceMetric || 'No completed solver run' },
+    { label: 'Map road preview', value: `${(totalDistance / 1000).toFixed(1)} km`, detail: 'OSRM display distance; not the solver objective' },
   ]
 
   return (
@@ -42,6 +48,7 @@ function LiveDeliveryAndRouting({
           <p className="eyebrow">Routing overview</p>
           <h1 id="live-delivery-title">Live Delivery and Routing</h1>
           <p className="subtitle">Monitor the active route and current vehicle assignments.</p>
+          <p className="data-provenance">{runId ? `Backend evidence: ${runId}` : 'No backend route has been completed yet.'}</p>
         </div>
         <button type="button" className="settings-button" onClick={onChangeAddress}>Change Address</button>
       </div>
@@ -49,7 +56,8 @@ function LiveDeliveryAndRouting({
       <section className="live-routing-metrics" aria-label="Live routing summary">
         {routingOverview.map((metric) => <article className="metric" key={metric.label}>
           <span className="metric-label">{metric.label}</span>
-          <strong className={metric.status === 'resolved' ? 'live-routing-success' : ''}>{metric.value}</strong>
+          <strong>{metric.value}</strong>
+          {metric.detail && <small>{metric.detail}</small>}
         </article>)}
       </section>
 

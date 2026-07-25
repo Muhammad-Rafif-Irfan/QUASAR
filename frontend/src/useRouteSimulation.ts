@@ -241,6 +241,13 @@ export function useRouteSimulation() {
     )))
   }, [])
 
+  /** Apply a coordinate change before submitting a fresh backend optimization. */
+  const updateStopLocation = useCallback((id: string, name: string, lat: number, lon: number) => {
+    setStops((previous) => previous.map((stop) => (
+      stop.id === id ? { ...stop, name, lat, lon } : stop
+    )))
+  }, [])
+
   /** Removing a planner row must also remove its coordinate from the request. */
   const removeStop = useCallback((id: string) => {
     setStops((previous) => previous.filter((stop) => stop.id !== id))
@@ -365,6 +372,7 @@ export function useRouteSimulation() {
     addStop,
     addStopAuto,
     renameStop,
+    updateStopLocation,
     removeStop,
     replaceStops,
     applyOptimizedFleetRoutes,

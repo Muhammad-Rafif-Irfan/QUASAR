@@ -12,7 +12,7 @@ export type NewOrderDraft = {
 
 type ChangeAddressModalProps = {
   onClose: () => void
-  onUpdate: (address: string) => void
+  onUpdate: (update: { address: string; lat: number; lon: number }) => void
 }
 
 type AddNewOrderModalProps = {
@@ -23,20 +23,24 @@ type AddNewOrderModalProps = {
 // Supporting state from the wireframe: it updates one affected delivery node.
 export function ChangeAddressModal({ onClose, onUpdate }: ChangeAddressModalProps) {
   const [newAddress, setNewAddress] = useState('')
+  const [lat, setLat] = useState('13.9692560')
+  const [lon, setLon] = useState('108.0200740')
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    onUpdate(newAddress)
+    onUpdate({ address: newAddress, lat: Number(lat), lon: Number(lon) })
   }
 
   return (
     <div className="modal-backdrop" role="presentation">
       <form className="supporting-modal" aria-modal="true" aria-labelledby="change-address-title" onSubmit={handleSubmit}>
         <header className="supporting-modal__header"><div><p className="section-label">Change address</p><h2 id="change-address-title">Update delivery location</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Close change address"><X size={16} /></button></header>
-        <p className="supporting-modal__copy">Update one delivery node and prepare the affected route for recalculation.</p>
+        <p className="supporting-modal__copy">Update the address and coordinates. Saving submits a fresh backend optimization; it does not merely relabel the map.</p>
         <div className="supporting-fields">
           <label>Current address<input value="N4 / current location" readOnly /></label>
           <label>New address<input value={newAddress} onChange={(event) => setNewAddress(event.target.value)} placeholder="Enter address" required /></label>
+          <label>Latitude<input type="number" min="-90" max="90" step="any" value={lat} onChange={(event) => setLat(event.target.value)} required /></label>
+          <label>Longitude<input type="number" min="-180" max="180" step="any" value={lon} onChange={(event) => setLon(event.target.value)} required /></label>
           <label>Reason<input defaultValue="Address changed" /></label>
           <label>Affected node<input value="N4" readOnly /></label>
           <label>Time window<select defaultValue="10:00–11:00"><option>10:00–11:00</option><option>09:00–10:00</option></select></label>
