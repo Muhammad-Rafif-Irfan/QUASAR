@@ -28,13 +28,15 @@ type RoutePlannerProps = {
   onOpenSettings: () => void
   onRunOptimization: () => void
   optimizeError: string | null
+  onAddDeliveryPoint: () => void
+  onRemoveDeliveryPoint: (id: string) => void
+  onRenameDeliveryPoint: (id: string, name: string) => void
 }
 
 export const initialOrders: Order[] = [
-  { id: 'N1', address: '', weight: '12', startTime: '09:00', endTime: '10:00' },
-  { id: 'N2', address: '', weight: '38', startTime: '09:00', endTime: '10:00' },
-  { id: 'N3', address: '', weight: '24', startTime: '10:00', endTime: '11:00' },
-  { id: 'N4', address: '', weight: '62', startTime: '10:00', endTime: '11:00' },
+  { id: 'N1', address: 'Pleiku Airport', weight: '12', startTime: '09:00', endTime: '10:00' },
+  { id: 'N2', address: 'Biển Hồ Pleiku', weight: '38', startTime: '09:00', endTime: '10:00' },
+  { id: 'N3', address: 'Chùa Minh Đạo, Diên Phú', weight: '24', startTime: '10:00', endTime: '11:00' },
 ]
 
 export const initialVehicles: Vehicle[] = [
@@ -54,6 +56,9 @@ function RoutePlanner({
   onOpenSettings,
   onRunOptimization,
   optimizeError,
+  onAddDeliveryPoint,
+  onRemoveDeliveryPoint,
+  onRenameDeliveryPoint,
 }: RoutePlannerProps) {
   const totalDemand = orders.reduce((total, order) => total + (Number(order.weight) || 0), 0)
   const totalCapacity = vehicles.reduce((total, vehicle) => total + (Number(vehicle.capacity) || 0), 0)
@@ -63,18 +68,12 @@ function RoutePlanner({
     setOrders((currentOrders) => currentOrders.map((order) => (
       order.id === id ? { ...order, [field]: value } : order
     )))
-  }
-
-  const addDeliveryPoint = () => {
-    const nextNode = Math.max(0, ...orders.map((order) => Number(order.id.replace('N', '')) || 0)) + 1
-    setOrders((currentOrders) => [
-      ...currentOrders,
-      { id: `N${nextNode}`, address: '', weight: '', startTime: '09:00', endTime: '10:00' },
-    ])
+    if (field === 'address') onRenameDeliveryPoint(id, value)
   }
 
   const removeOrder = (id: string) => {
     setOrders((currentOrders) => currentOrders.filter((order) => order.id !== id))
+    onRemoveDeliveryPoint(id)
   }
 
   const updateVehicle = (id: string, field: keyof Vehicle, value: string) => {
@@ -149,7 +148,7 @@ function RoutePlanner({
               ))}
             </div>
             <div className="planner-panel-actions">
-              <button type="button" className="settings-button" onClick={addDeliveryPoint}><Plus size={15} /> Add delivery point</button>
+              <button type="button" className="settings-button" onClick={onAddDeliveryPoint}><Plus size={15} /> Add delivery point</button>
               <button type="button" className="settings-button"><Upload size={15} /> Import order CSV</button>
             </div>
           </article>

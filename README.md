@@ -1,15 +1,15 @@
 # QUASAR (Quantum-Accelerated Supply-chain And Routing) 🚀
 
-QUASAR is a classical-quantum hybrid logistics orchestration system designed to tackle NP-hard Vehicle Routing Problems (VRP) and Traveling Salesperson Problems (TSP) using a cutting-edge **Quantum Annealing-Inspired (QAI) + Higher-Order Binary Optimization (HOBO)** architecture.
+QUASAR is a classical-quantum hybrid logistics orchestration system for small, auditable Traveling Salesperson Problem (TSP) experiments alongside a classical routing baseline. Its quantum path is a bounded cost-Hamiltonian QAOA demonstration, not a claim of quantum advantage.
 
 Developed as part of the **QC4SG Hackathon 2026** (Team 23).
 
 ## 👥 Contributors (Team 23)
 
 * **Muhammad Rafif Irfan** - Tech Lead (Quantum Mechanics & Optimization Algorithm)
-* **Trịnh Hoàng Tú** - Tech Lead (System Architecture, DevSecOps & Security Hardening)
+* **Trịnh Hoàng Tú** - Backend & Optimization Algorithms Engineer
 * **Aga Ucu Fradana** - Core Research & Cryptography Engineer
-* **Trần Văn Hội** - Backend Engineer & Core Infrastructure
+* **Trần Văn Hội** - Frontend & Product Integration Engineer
 
 ---
 
@@ -57,7 +57,7 @@ Unlike standard rigid quantum solutions, QUASAR implements a **Hybrid Asynchrono
 ```
 QUASAR/
 ├── app/                      # FastAPI API (production)
-├── core/                     # QAI-HOBO solver (wired into API)
+├── core/                     # Bounded cost-Hamiltonian QAOA solver (wired into API)
 ├── services/                 # OR-Tools classical solver
 ├── frontend/                 # React + Vite UI
 ├── research/ibm_sdvrp/       # Experimental IBM SDVRP runners (not in API image)
@@ -102,7 +102,11 @@ Client Request → ErrorSanitization → SecurityHeaders → RequestSizeLimit
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate limit window duration |
 | `OPTIMIZE_BURST_LIMIT` | `5` | Max optimization requests per window |
 | `MAX_REQUEST_BODY_KB` | `512` | Maximum request body size in KB |
-| `MAX_OPTIMIZATION_STOPS` | `5` | Maximum stops per API run; protects local quantum simulation memory |
+| `MAX_OPTIMIZATION_STOPS` | `15` | Maximum stops for a classical demo run; QAOA remains separately capped at 3 |
+| `MAX_QAOA_STOPS` | `3` | Maximum stops for the verified QAOA encoding; larger runs must be classical |
+| `QAOA_SIMULATOR_MAXITER` | `8` | COBYLA iterations for simulator QAOA runs |
+| `QAOA_HARDWARE_MAXITER` | `4` | COBYLA iterations for hardware QAOA runs; each adds a queued job |
+| `OSMNX_DEADLINE_SECONDS` | `8` | End-to-end deadline for road-network download before Haversine fallback |
 | `DATABASE_URL` | `sqlite:///./data/quasar.db` | SQLAlchemy database URL |
 | `ALLOWED_ORIGINS` | Local frontend origins | Comma-separated CORS origins |
 | `TRUST_PROXY_HEADERS` | `false` | Set only behind a trusted reverse proxy to honor `X-Forwarded-For` |
@@ -174,7 +178,7 @@ Automated pipeline triggers on push to `main` or `feature/*` branches:
 ### Request Tracing:
 Every request receives a correlation ID (`X-Request-ID`) that propagates through:
 ```
-API Receipt → Distance Matrix → OR-Tools → QAOA → QAI+HOBO → DB Write
+API Receipt → Distance Matrix → OR-Tools → Cost-Hamiltonian QAOA → DB Write
 ```
 
 ### Performance Headers:
@@ -305,7 +309,7 @@ python tests/test_quasar.py
       "created_at": "2026-06-20T12:00:05"
     },
     {
-      "algorithm": "QUBO+QAOA",
+      "algorithm": "QAOA (cost Hamiltonian)",
       "tour": [0, 1, 2, 3, 0],
       "distance_meters": 7114.0,
       "is_valid": true,
@@ -318,7 +322,7 @@ python tests/test_quasar.py
   "quantum_jobs": [
     {
       "job_id": "sim-qaoa-1-849c38ee",
-      "algorithm": "QAOA-Iter-1",
+      "algorithm": "QAOA-CostHamiltonian-Iter-1",
       "backend_name": "Local Statevector Simulator",
       "status": "COMPLETED",
       "qpu_time_seconds": 0.0,

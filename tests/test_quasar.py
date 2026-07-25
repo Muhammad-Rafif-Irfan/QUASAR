@@ -11,8 +11,7 @@ from app.models import BenchmarkRun, QuantumJob, BenchmarkResult
 from app.services.quantum_driver import (
     validate_tour, 
     solve_or_tools, 
-    solve_qaoa, 
-    solve_qai_hobo, 
+    solve_qaoa,
     run_optimization_pipeline, 
     get_quantum_backend_and_sampler
 )
@@ -79,8 +78,8 @@ def run_tests():
     assert v_ok is True, f"OR-Tools tour invalid: {err}"
     print("    -> Classical solver testing passed successfully.")
 
-    # 5. Quantum Solver (QAOA & QAI+HOBO in local simulator mode)
-    print("\n[5] Testing Quantum Solvers (QAOA & QAI+HOBO) on local simulator...")
+    # 5. Verified cost-Hamiltonian QAOA in local simulator mode
+    print("\n[5] Testing cost-Hamiltonian QAOA on local simulator...")
     backend, sampler, pm, is_simulator = get_quantum_backend_and_sampler()
     print(f"    - Backend Simulator mode: {is_simulator}")
     assert is_simulator is True, "Expected simulator mode since IBM_QUANTUM_TOKEN is not set"
@@ -106,13 +105,8 @@ def run_tests():
     print(f"      QAOA Best Tour: {qaoa_tour}")
     print(f"      QAOA Distance: {qaoa_dist} m")
     
-    print("    - Executing QAI+HOBO simulator run...")
-    qai_tour, qai_dist, qai_qpu_sec = solve_qai_hobo(dist_matrix, backend, sampler, pm, is_simulator, ort_tour, run_id, db)
-    print(f"      QAI+HOBO Best Tour: {qai_tour}")
-    print(f"      QAI+HOBO Distance: {qai_dist} m")
-
     db.close()
-    print("    -> Quantum solvers simulation tests passed.")
+    print("    -> Quantum solver simulation test passed.")
 
     # 6. Entire Pipeline Execution & DB Trace Verification
     print("\n[6] Testing full pipeline execution (run_optimization_pipeline)...")
@@ -133,7 +127,12 @@ def run_tests():
     db.close()
 
     # Trigger pipeline
-    run_optimization_pipeline(run_id_pipeline, depot, stops)
+    run_optimization_pipeline(
+        run_id_pipeline,
+        depot,
+        stops,
+        algorithms=["nearest_neighbor", "or_tools", "qaoa"],
+    )
 
     # Verify database contents
     db = SessionLocal()
@@ -150,9 +149,8 @@ def run_tests():
     for j in pipeline_run.quantum_jobs:
         print(f"      * {j.algorithm}: Job ID={j.job_id}, Backend={j.backend_name}, Status={j.status}, QPU Time={j.qpu_time_seconds}s")
         
-    assert len(pipeline_run.results) == 3, "Expected 3 results (OR-Tools, QAOA, QAI+HOBO)"
-    # QAOA loop runs 3 iterations (can evaluate 4 times), QAI runs 3 temperatures -> total 6 or 7 quantum jobs should be logged
-    assert len(pipeline_run.quantum_jobs) in [6, 7], f"Expected 6 or 7 quantum jobs, got {len(pipeline_run.quantum_jobs)}"
+    assert len(pipeline_run.results) == 3, "Expected nearest-neighbor, OR-Tools, and QAOA results"
+    assert len(pipeline_run.quantum_jobs) >= 2, "Expected optimization and final QAOA jobs"
 
     db.close()
     print("    -> Full pipeline test passed successfully!")

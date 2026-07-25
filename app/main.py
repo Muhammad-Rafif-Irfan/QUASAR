@@ -263,7 +263,7 @@ def inspect_runtime(db: Session = Depends(get_db)):
                 step=2,
                 name="Distance matrix",
                 module="app.services.routing",
-                description="OSMnx road network with 5s timeout; Haversine fallback if OSM fails.",
+                description="OSMnx road network with a bounded deadline; Haversine fallback if OSM fails.",
             ),
             schemas.InspectPipelineStage(
                 step=3,
@@ -274,8 +274,8 @@ def inspect_runtime(db: Session = Depends(get_db)):
             schemas.InspectPipelineStage(
                 step=4,
                 name="Quantum solvers",
-                module="app.services.quantum_driver + core.solver_qai_hobo",
-                description="QAOA then QAI+HOBO on IBM QPU when token set, else local simulator.",
+                module="app.services.quantum_driver + core.small_tsp_qaoa",
+                description="Cost-Hamiltonian QAOA for a verified small TSP (up to three stops), on IBM QPU when token set or local simulator.",
             ),
             schemas.InspectPipelineStage(
                 step=5,
@@ -299,7 +299,7 @@ def inspect_runtime(db: Session = Depends(get_db)):
             "Experimental IBM SDVRP runners live under research/ibm_sdvrp and are NOT in this pipeline."
             if research_present
             else "research/ibm_sdvrp package not found in working directory.",
-            "POST /api/v1/optimize accepts optional algorithms=[nearest_neighbor,or_tools,qaoa,qai_hobo].",
+            "POST /api/v1/optimize accepts optional algorithms=[nearest_neighbor,or_tools,qaoa]; qaoa supports at most three stops.",
             "Poll GET /api/v1/optimize/{run_id} until status is COMPLETED or FAILED.",
         ],
     )
@@ -321,8 +321,7 @@ def optimize_route(
     Triggers the full classical-quantum hybrid pipeline asynchronously:
       1. Distance matrix computation (OSMnx / Haversine fallback)
       2. Classical warm-start (Google OR-Tools)
-      3. QAOA optimization (IBM QPU / Simulator)
-      4. QAI+HOBO optimization (3-temperature annealing)
+      3. Cost-Hamiltonian QAOA optimization for a verified small TSP (IBM QPU / Simulator)
 
     Returns immediately with a run_id for polling.
     """
@@ -363,7 +362,7 @@ def optimize_route(
     return schemas.OptimizeResponse(
         run_id=run_id,
         status="PENDING",
-        message="Optimization pipeline triggered successfully on IBM Quantum (with simulator fallback).",
+        message="Optimization pipeline accepted. Poll the run endpoint for verified results; QAOA uses IBM hardware only when a token is configured.",
     )
 
 

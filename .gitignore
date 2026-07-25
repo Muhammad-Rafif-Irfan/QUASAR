@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 quasar.db
+data/
 cache/
 static/
 .env*

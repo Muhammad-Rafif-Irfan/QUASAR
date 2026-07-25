@@ -2,11 +2,18 @@ import os
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-MAX_OPTIMIZATION_STOPS = max(1, int(os.environ.get("MAX_OPTIMIZATION_STOPS", "5")))
-ALLOWED_ALGORITHMS = {"nearest_neighbor", "or_tools", "qaoa", "qai_hobo"}
+# Classical OR-Tools runs remain useful on a small real-geography demo set.
+# Quantum validation is intentionally governed by the separate, much smaller
+# MAX_QAOA_STOPS limit below.
+MAX_OPTIMIZATION_STOPS = max(1, int(os.environ.get("MAX_OPTIMIZATION_STOPS", "15")))
+MAX_QAOA_STOPS = min(
+    MAX_OPTIMIZATION_STOPS,
+    max(1, int(os.environ.get("MAX_QAOA_STOPS", "3"))),
+)
+ALLOWED_ALGORITHMS = {"nearest_neighbor", "or_tools", "qaoa"}
 
 
 class Location(BaseModel):
@@ -22,17 +29,19 @@ class Location(BaseModel):
             raise ValueError("name must not be blank")
         return normalized
 
+    model_config = ConfigDict(extra="forbid")
+
 
 class OptimizeRequest(BaseModel):
     depot: Location
     stops: List[Location] = Field(..., min_length=1, max_length=MAX_OPTIMIZATION_STOPS)
     # Optional solver selection for comparison runs.
-    # Allowed: nearest_neighbor, or_tools, qaoa, qai_hobo
-    # Default runs classical + quantum suite for side-by-side comparison.
+    # Allowed: nearest_neighbor, or_tools, qaoa.
+    # QAOA is restricted to MAX_QAOA_STOPS small-TSP instances.
     algorithms: Optional[List[str]] = Field(
         default=None,
         max_length=len(ALLOWED_ALGORITHMS),
-        example=["nearest_neighbor", "or_tools", "qaoa", "qai_hobo"],
+        example=["nearest_neighbor", "or_tools", "qaoa"],
     )
 
     @field_validator("algorithms")
@@ -47,6 +56,19 @@ class OptimizeRequest(BaseModel):
         if len(set(normalized)) != len(normalized):
             raise ValueError("algorithms must not contain duplicates")
         return normalized
+
+    @model_validator(mode="after")
+    def qaoa_scope_must_fit_the_verified_encoding(self):
+        if self.algorithms and "qaoa" in self.algorithms and len(self.stops) > MAX_QAOA_STOPS:
+            raise ValueError(
+                f"qaoa is validated for at most {MAX_QAOA_STOPS} stops per run"
+            )
+        return self
+
+    # This endpoint is deliberately a single-depot TSP contract. Rejecting
+    # unknown fields prevents a frontend from silently pretending that a
+    # vehicles/fleet payload was optimized as a VRP.
+    model_config = ConfigDict(extra="forbid")
 
 
 class OptimizeResponse(BaseModel):

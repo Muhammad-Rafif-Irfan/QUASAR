@@ -2,22 +2,23 @@ import os
 import time
 import uuid
 import json
-import math
 import logging
 import numpy as np
 from scipy.optimize import minimize
 
-# Qiskit
-from qiskit import QuantumCircuit
-
 # Database & Models
 from app.database import SessionLocal
 from app.models import BenchmarkRun, QuantumJob, BenchmarkResult
-from app.schemas import MAX_OPTIMIZATION_STOPS
+from app.schemas import MAX_OPTIMIZATION_STOPS, MAX_QAOA_STOPS
 from app.services.routing import calculate_distance_matrix, render_map
 
-# Core algorithm modules (wired from Team Tech Lead — Quantum / Classical)
-from core.solver_qai_hobo import QaiHoboSolver
+from core.small_tsp_qaoa import (
+    best_feasible_sample,
+    build_qaoa_circuit,
+    cost_spectrum,
+    expectation_from_counts,
+    required_qubits,
+)
 from services.classical_solver import ORToolsSolver
 
 logger = logging.getLogger("quasar.pipeline")
@@ -162,9 +163,10 @@ ALLOWED_ALGORITHMS = {
     "nearest_neighbor",
     "or_tools",
     "qaoa",
-    "qai_hobo",
 }
-DEFAULT_ALGORITHMS = ["nearest_neighbor", "or_tools", "qaoa", "qai_hobo"]
+# API clients that omit solver selection retain the inexpensive, safe
+# classical comparison. The UI explicitly opts into the bounded QAOA path.
+DEFAULT_ALGORITHMS = ["nearest_neighbor", "or_tools"]
 
 
 def _normalize_algorithms(algorithms: list[str] | None) -> list[str]:
@@ -180,145 +182,82 @@ def _normalize_algorithms(algorithms: list[str] | None) -> list[str]:
 
 def solve_qaoa(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool, run_id: str, db) -> tuple[list[int], float, float]:
     """
-    Executes Closed-Loop QAOA on the backend (COBYLA optimization, max 3 iterations).
+    Execute a one-layer QAOA whose diagonal phase separator encodes actual
+    depot-TSP route costs. The bounded encoding is intentionally restricted to
+    three customer stops, keeping every basis state independently auditable.
     """
     n = len(dist_matrix)
+    if n - 1 > MAX_QAOA_STOPS:
+        raise ValueError(f"QAOA supports at most {MAX_QAOA_STOPS} stops")
+
+    tours, costs = cost_spectrum(dist_matrix)
     qaoa_iter = 0
-    qaoa_best_tour = []
-    qaoa_best_dist = float('inf')
     qaoa_total_qpu_time = 0.0
+    maxiter = int(os.environ.get(
+        "QAOA_SIMULATOR_MAXITER" if is_simulator else "QAOA_HARDWARE_MAXITER",
+        "8" if is_simulator else "4",
+    ))
 
-    def build_qaoa(gamma, beta):
-        qc = QuantumCircuit(n - 1)
-        qc.h(range(n - 1))
-        for i in range(n - 1):
-            for j in range(i + 1, n - 1):
-                qc.cx(i, j)
-                qc.rz(gamma, j)
-                qc.cx(i, j)
-        qc.rx(beta, range(n - 1))
-        qc.measure_all()
-        return qc
+    def extract_counts(result):
+        data = result[0].data
+        for attr_name in dir(data):
+            attr = getattr(data, attr_name, None)
+            if attr and hasattr(attr, "get_counts"):
+                return attr.get_counts()
+        return data.meas.get_counts()
 
-    def qaoa_obj(params):
-        nonlocal qaoa_iter, qaoa_best_dist, qaoa_best_tour, qaoa_total_qpu_time
-        qaoa_iter += 1
-        qc = build_qaoa(params[0], params[1])
-
+    def sample(gamma: float, beta: float, label: str) -> tuple[dict[str, int], float]:
+        nonlocal qaoa_total_qpu_time
+        circuit = build_qaoa_circuit(costs, gamma, beta)
         backend_name = "Local Statevector Simulator" if is_simulator else backend.name
-        job_id_placeholder = f"sim-qaoa-{qaoa_iter}-{uuid.uuid4().hex[:8]}" if is_simulator else "PENDING"
-
+        job_id_placeholder = f"sim-qaoa-{uuid.uuid4().hex[:8]}" if is_simulator else "PENDING"
         q_job = QuantumJob(
             run_id=run_id,
             job_id=job_id_placeholder,
-            algorithm=f"QAOA-Iter-{qaoa_iter}",
+            algorithm=label,
             backend_name=backend_name,
             status="SUBMITTED",
-            qpu_time_seconds=0.0
+            qpu_time_seconds=0.0,
         )
         db.add(q_job)
         db.commit()
 
         try:
-            if is_simulator:
-                job = sampler.run([qc])
-            else:
-                isa_qc = pm.run(qc)
-                job = sampler.run([isa_qc])
+            job = sampler.run([circuit]) if is_simulator else sampler.run([pm.run(circuit)])
+            if not is_simulator:
                 q_job.job_id = job.job_id()
                 db.commit()
-
             result = job.result()
-
             quantum_seconds = 0.0
             if not is_simulator:
                 try:
-                    quantum_seconds = job.metrics().get("usage", {}).get("quantum_seconds", 0.0)
+                    quantum_seconds = float(job.metrics().get("usage", {}).get("quantum_seconds", 0.0))
                 except Exception:
                     pass
             qaoa_total_qpu_time += quantum_seconds
-
             q_job.status = "COMPLETED"
             q_job.qpu_time_seconds = quantum_seconds
             db.commit()
-
-            # Robust count reading from PubResult
-            data = result[0].data
-            counts = None
-            for attr_name in dir(data):
-                attr = getattr(data, attr_name, None)
-                if attr and hasattr(attr, 'get_counts'):
-                    counts = attr.get_counts()
-                    break
-            if counts is None:
-                counts = data.meas.get_counts()
-
-            best_bits = max(counts, key=counts.get)
-            tour = [0] + [i + 1 for i,
-                          b in enumerate(reversed(best_bits)) if b == '1']
-            tour.extend([i for i in range(1, n) if i not in tour])
-            tour.append(0)
-
-            dist = tour_distance(tour, dist_matrix)
-            if dist < qaoa_best_dist:
-                qaoa_best_dist = dist
-                qaoa_best_tour = tour
-
-            return float(dist)
-        except Exception as e:
+            return extract_counts(result), quantum_seconds
+        except Exception:
             q_job.status = "FAILED"
             db.commit()
-            raise e
+            raise
 
-    minimize(qaoa_obj, [0.5, 0.5], method='COBYLA', options={'maxiter': 3})
-    return qaoa_best_tour, qaoa_best_dist, qaoa_total_qpu_time
+    def qaoa_obj(params):
+        nonlocal qaoa_iter
+        qaoa_iter += 1
+        counts, _ = sample(
+            float(params[0]), float(params[1]), f"QAOA-CostHamiltonian-Iter-{qaoa_iter}"
+        )
+        return expectation_from_counts(counts, costs)
 
-
-def solve_qai_hobo(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool, ort_tour: list[int], run_id: str, db) -> tuple[list[int], float, float]:
-    """
-    Executes QAI+HOBO via the shared core.QaiHoboSolver (3 temperatures: 0.8, 0.4, 0.1).
-    Persists QuantumJob rows through the solver job_callback.
-    """
-    backend_name = "Local Statevector Simulator" if is_simulator else backend.name
-    active_jobs: dict = {}
-
-    def job_callback(event: str, payload: dict):
-        if event == "job_start":
-            q_job = QuantumJob(
-                run_id=run_id,
-                job_id=payload["job_id"],
-                algorithm=payload["algorithm"],
-                backend_name=payload["backend_name"],
-                status="SUBMITTED",
-                qpu_time_seconds=0.0,
-            )
-            db.add(q_job)
-            db.commit()
-            active_jobs[payload["algorithm"]] = q_job
-        elif event == "job_complete":
-            q_job = active_jobs.get(payload["algorithm"])
-            if q_job:
-                q_job.job_id = payload.get("job_id", q_job.job_id)
-                q_job.status = "COMPLETED"
-                q_job.qpu_time_seconds = float(
-                    payload.get("qpu_time_seconds", 0.0))
-                db.commit()
-        elif event == "job_failed":
-            q_job = active_jobs.get(payload["algorithm"])
-            if q_job:
-                q_job.status = "FAILED"
-                db.commit()
-
-    solver = QaiHoboSolver(
-        distance_matrix=dist_matrix,
-        sampler=sampler,
-        pass_manager=pm,
-        is_simulator=is_simulator,
-        job_callback=job_callback,
-        backend_name=backend_name,
+    optimum = minimize(qaoa_obj, [0.2, 0.2], method="COBYLA", options={"maxiter": maxiter})
+    final_counts, _ = sample(
+        float(optimum.x[0]), float(optimum.x[1]), "QAOA-CostHamiltonian-Final"
     )
-    outcome = solver.solve(warm_start_route=ort_tour)
-    return outcome["best_tour"], outcome["best_distance"], outcome["qpu_seconds"]
+    best_tour, best_distance, _ = best_feasible_sample(final_counts, tours, costs)
+    return best_tour, best_distance, qaoa_total_qpu_time
 
 
 def run_optimization_pipeline(
@@ -331,7 +270,7 @@ def run_optimization_pipeline(
     Asynchronous worker that runs the selected classical and/or quantum solvers.
     """
     selected = _normalize_algorithms(algorithms)
-    needs_quantum = any(name in selected for name in ("qaoa", "qai_hobo"))
+    needs_quantum = "qaoa" in selected
 
     if not stops or len(stops) > MAX_OPTIMIZATION_STOPS:
         raise ValueError(
@@ -418,12 +357,9 @@ def run_optimization_pipeline(
                     db.commit()
 
         if needs_quantum:
-            # QAI+HOBO uses n * ceil(log2(n)) logical qubits; choose hardware
-            # that can accommodate the largest selected quantum circuit.
-            min_qubits = n - 1
-            if "qai_hobo" in selected:
-                min_qubits = max(min_qubits, n * max(1, math.ceil(math.log2(n))))
-            backend, sampler, pm, is_simulator = get_quantum_backend_and_sampler(min_qubits)
+            backend, sampler, pm, is_simulator = get_quantum_backend_and_sampler(
+                required_qubits(n)
+            )
 
             if "qaoa" in selected:
                 t0_qaoa = time.time()
@@ -434,7 +370,7 @@ def run_optimization_pipeline(
                 ref = ort_dist if ort_dist and ort_dist > 0 else baseline_dist
                 db.add(BenchmarkResult(
                     run_id=run_id,
-                    algorithm="QUBO+QAOA",
+                    algorithm="QAOA (cost Hamiltonian)",
                     tour=json.dumps(qaoa_tour),
                     distance_meters=float(qaoa_dist),
                     is_valid=qaoa_is_val,
@@ -447,36 +383,6 @@ def run_optimization_pipeline(
                     qaoa_tour, points, G, nodes,
                     f"static/maps/{run_id}_QAOA.html",
                     f"QAOA ({qaoa_dist}m)", "red",
-                )
-
-            if "qai_hobo" in selected:
-                if ort_tour is None:
-                    ort_tour, ort_dist, _ = solve_or_tools(dist_matrix)
-                    if ort_dist and ort_dist > 0:
-                        baseline_dist = float(ort_dist)
-                t0_qai = time.time()
-                qai_tour, qai_dist, _ = solve_qai_hobo(
-                    dist_matrix, backend, sampler, pm, is_simulator,
-                    ort_tour, run_id, db,
-                )
-                qai_time_ms = (time.time() - t0_qai) * 1000.0
-                qai_is_val, qai_val_err = validate_tour(qai_tour, n)
-                ref = ort_dist if ort_dist and ort_dist > 0 else baseline_dist
-                db.add(BenchmarkResult(
-                    run_id=run_id,
-                    algorithm="QAI+HOBO",
-                    tour=json.dumps(qai_tour),
-                    distance_meters=float(qai_dist),
-                    is_valid=qai_is_val,
-                    validation_error=qai_val_err,
-                    approximation_ratio=float(qai_dist / ref) if ref else None,
-                    execution_time_ms=qai_time_ms,
-                ))
-                db.commit()
-                render_map(
-                    qai_tour, points, G, nodes,
-                    f"static/maps/{run_id}_QAI_HOBO.html",
-                    f"QAI+HOBO ({qai_dist}m)", "green",
                 )
 
         run.status = "COMPLETED"

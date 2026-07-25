@@ -11,6 +11,9 @@ export type SolverOption = {
   description: string
 }
 
+export const MAX_QAOA_STOPS = 3
+export const MAX_CLASSICAL_DEMO_STOPS = 15
+
 export const SOLVER_OPTIONS: SolverOption[] = [
   {
     id: 'nearest_neighbor',
@@ -28,24 +31,17 @@ export const SOLVER_OPTIONS: SolverOption[] = [
   },
   {
     id: 'qaoa',
-    label: 'QUBO + QAOA (quantum)',
+    label: `QAOA cost Hamiltonian (≤${MAX_QAOA_STOPS} stops)`,
     kind: 'quantum',
     algorithms: ['or_tools', 'qaoa'],
-    description: 'Quantum QAOA with OR-Tools baseline for approximation ratio.',
-  },
-  {
-    id: 'qai_hobo',
-    label: 'QAI + HOBO (quantum)',
-    kind: 'quantum',
-    algorithms: ['or_tools', 'qai_hobo'],
-    description: 'Quantum annealing-inspired HOBO with classical warm-start.',
+    description: `Verified small-instance QAOA: phase separator encodes actual route costs; limited to ${MAX_QAOA_STOPS} stops.`,
   },
   {
     id: 'compare_all',
-    label: 'Compare all (classical + quantum)',
+    label: 'Compare verified solvers',
     kind: 'hybrid',
-    algorithms: ['nearest_neighbor', 'or_tools', 'qaoa', 'qai_hobo'],
-    description: 'Run every solver and compare distance / time side by side.',
+    algorithms: ['nearest_neighbor', 'or_tools', 'qaoa'],
+    description: 'Compare classical baselines with the verified small-instance QAOA path.',
   },
 ]
 

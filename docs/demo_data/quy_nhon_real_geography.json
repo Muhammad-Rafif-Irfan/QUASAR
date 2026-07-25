@@ -1,0 +1,30 @@
+{
+  "title": "Quy Nhon real-geography extension pool",
+  "purpose": "Public OpenStreetMap geography for classical-route testing. Use a three-stop subset only when selecting QAOA.",
+  "source": {
+    "provider": "OpenStreetMap contributors",
+    "license": "ODbL 1.0",
+    "retrieved_at": "2026-07-25",
+    "note": "The data contains public geographic features, not real delivery orders, demand, fleet, or time-window records."
+  },
+  "locations": [
+    {
+      "name": "Quy Nhon University",
+      "lat": 13.7593966,
+      "lon": 109.2172639,
+      "osm_url": "https://www.openstreetmap.org/way/971127478"
+    },
+    {
+      "name": "Binh Dinh Conference Center",
+      "lat": 13.7731162,
+      "lon": 109.2217008,
+      "osm_url": "https://www.openstreetmap.org/way/157532085"
+    },
+    {
+      "name": "Quy Nhon city centre",
+      "lat": 13.7549672,
+      "lon": 109.1767596,
+      "osm_url": "https://www.openstreetmap.org/relation/7068592"
+    }
+  ]
+}

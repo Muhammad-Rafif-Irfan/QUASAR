@@ -16,6 +16,7 @@ The primary public API consumed by the optimization pipeline is:
 
 import os
 import logging
+import threading
 from typing import List, Dict, Tuple, Optional
 
 import numpy as np
@@ -70,6 +71,10 @@ except ImportError:
     logger.info(
         "haversine library not installed; using built-in great-circle formula."
     )
+
+OSMNX_DEADLINE_SECONDS = max(
+    1.0, float(os.environ.get("OSMNX_DEADLINE_SECONDS", "8"))
+)
 
 # ===================================================================== #
 #                        DISTANCE FUNCTIONS                             #
@@ -278,6 +283,42 @@ def _build_osmnx_matrix(
     return matrix
 
 
+def _build_osmnx_context(points: List[Dict]):
+    """Return graph, snapped nodes, and a road-distance matrix in one call."""
+    graph = _download_graph(points)
+    snapped_nodes = _snap_nodes(graph, points)
+    return graph, snapped_nodes, _build_osmnx_matrix(graph, snapped_nodes, points)
+
+
+def _run_osmnx_with_deadline(points: List[Dict]):
+    """Bound an external OSMnx request and preserve the Haversine fallback.
+
+    OSMnx's internal request timeout is not an end-to-end deadline: a remote
+    Overpass server can still stall during retries or graph processing. The
+    worker is daemonized so a stalled provider can never block application
+    shutdown or an optimization result.
+    """
+    completed = threading.Event()
+    outcome: dict[str, object] = {}
+
+    def worker():
+        try:
+            outcome["value"] = _build_osmnx_context(points)
+        except Exception as exc:  # propagated below to select the fallback
+            outcome["error"] = exc
+        finally:
+            completed.set()
+
+    threading.Thread(target=worker, daemon=True, name="quasar-osmnx").start()
+    if not completed.wait(OSMNX_DEADLINE_SECONDS):
+        raise TimeoutError(
+            f"OSMnx routing exceeded the {OSMNX_DEADLINE_SECONDS:.0f}s deadline"
+        )
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["value"]
+
+
 # ===================================================================== #
 #                         PUBLIC API                                     #
 # ===================================================================== #
@@ -327,9 +368,8 @@ def compute_distance_matrix(
     # --- Attempt OSMnx road-network routing ---
     if OSMNX_AVAILABLE:
         try:
-            G = _download_graph(locations)
-            nodes = _snap_nodes(G, locations)
-            return _build_osmnx_matrix(G, nodes, locations)
+            _, _, matrix = _run_osmnx_with_deadline(locations)
+            return matrix
         except Exception as exc:
             logger.warning(
                 "OSMnx routing failed (%s). Falling back to Haversine.", exc
@@ -372,9 +412,7 @@ def calculate_distance_matrix(
     # --- Attempt OSMnx road-network routing ---
     if OSMNX_AVAILABLE:
         try:
-            G = _download_graph(points)
-            nodes = _snap_nodes(G, points)
-            raw_matrix = _build_osmnx_matrix(G, nodes, points)
+            G, nodes, raw_matrix = _run_osmnx_with_deadline(points)
 
             # Convert to integer numpy array for backward compatibility
             dist_matrix = np.array(raw_matrix, dtype=int)

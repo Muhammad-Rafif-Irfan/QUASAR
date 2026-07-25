@@ -118,8 +118,9 @@ def _get_client_ip(request: Request) -> str:
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
-    Applies rate limiting to all API endpoints, with stricter limits
-    on the expensive /api/v1/optimize POST endpoint.
+    Applies rate limiting to state-changing API endpoints, with a stricter
+    limit on the expensive /api/v1/optimize POST endpoint. Read-only status
+    polling is deliberately exempt so a client cannot rate-limit its own run.
 
     Response headers include rate limit metadata for client awareness:
       - X-RateLimit-Limit
@@ -155,19 +156,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     },
                 )
 
-        # Global rate limit for all API endpoints
-        if request.url.path.startswith("/api/"):
+        # Global limit protects state-changing requests. GET status polling is
+        # read-only and can occur frequently while a long optimization runs.
+        if request.url.path.startswith("/api/") and request.method not in {"GET", "HEAD", "OPTIONS"}:
             allowed, global_meta = _global_limiter.is_allowed(client_ip)
             if not allowed:
                 return JSONResponse(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     content={
                         "detail": "Too many requests. Please slow down.",
-                        "retry_after_seconds": meta["reset_after_seconds"],
+                        "retry_after_seconds": global_meta["reset_after_seconds"],
                     },
                     headers={
-                        "Retry-After": str(meta["reset_after_seconds"]),
-                        "X-RateLimit-Limit": str(meta["limit"]),
+                        "Retry-After": str(global_meta["reset_after_seconds"]),
+                        "X-RateLimit-Limit": str(global_meta["limit"]),
                         "X-RateLimit-Remaining": "0",
                     },
                 )
@@ -175,8 +177,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Proceed with the request
         response = await call_next(request)
 
-        # Attach rate limit headers for successful API requests
-        if request.url.path.startswith("/api/"):
+        # Attach global rate-limit headers when a state-changing request was
+        # admitted. Read-only endpoints do not consume this shared budget.
+        if request.url.path.startswith("/api/") and global_meta is not None:
             response.headers["X-RateLimit-Limit"] = str(RATE_LIMIT_MAX_REQUESTS)
             response.headers["X-RateLimit-Remaining"] = str((global_meta or {}).get("remaining", 0))
 

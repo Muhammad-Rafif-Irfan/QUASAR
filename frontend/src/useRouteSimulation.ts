@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 
-// ─── Da Nang demo coordinates (matches backend demo data) ────────────
+// ─── Pleiku real-geography demo coordinates (OpenStreetMap) ──────────
 export type MapLocation = {
   id: string
   name: string
@@ -26,29 +26,26 @@ export type TruckRoute = {
 
 export const DEPOT: MapLocation = {
   id: 'depot',
-  name: 'Depot Pusat',
-  lat: 16.0544,
-  lon: 108.2022,
+  name: 'Pleiku Stadium (demo depot)',
+  lat: 13.9791553,
+  lon: 108.0049003,
 }
 
-/** Pre-assigned Da Nang coordinates for the demo orders N1–N4. */
+/**
+ * Real OSM geography, but synthetic delivery demand. Source object IDs and
+ * licensing are recorded in docs/demo_data/pleiku_quantum_demo.json.
+ */
 const DEMO_COORDS: Record<string, { name: string; lat: number; lon: number }> = {
-  N1: { name: 'Pelabuhan', lat: 16.0650, lon: 108.2200 },
-  N2: { name: 'Pasar Con', lat: 16.0450, lon: 108.2100 },
-  N3: { name: 'Bandara', lat: 16.0438, lon: 108.1990 },
-  N4: { name: 'Hai Chau District', lat: 16.0680, lon: 108.2140 },
+  N1: { name: 'Pleiku Airport', lat: 14.0044240, lon: 108.0135476 },
+  N2: { name: 'Biển Hồ Pleiku', lat: 14.0468591, lon: 107.9960066 },
+  N3: { name: 'Chùa Minh Đạo, Diên Phú', lat: 13.9569300, lon: 107.9828185 },
 }
 
 /** Extra location pool for dynamically added orders. */
 const EXTRA_LOCATIONS: { name: string; lat: number; lon: number }[] = [
-  { name: 'Son Tra District', lat: 16.0930, lon: 108.2480 },
-  { name: 'Lien Chieu District', lat: 16.0780, lon: 108.1510 },
-  { name: 'Thanh Khe Market', lat: 16.0600, lon: 108.1880 },
-  { name: 'Ngu Hanh Son', lat: 16.0190, lon: 108.2520 },
-  { name: 'Hoa Vang District', lat: 16.0070, lon: 108.1350 },
-  { name: 'My Khe Beach', lat: 16.0560, lon: 108.2470 },
-  { name: 'Dragon Bridge Area', lat: 16.0612, lon: 108.2278 },
-  { name: 'Marble Mountains', lat: 16.0035, lon: 108.2630 },
+  { name: 'Quy Nhon University', lat: 13.7593966, lon: 109.2172639 },
+  { name: 'Binh Dinh Conference Center', lat: 13.7731162, lon: 109.2217008 },
+  { name: 'Quy Nhon city centre', lat: 13.7549672, lon: 109.1767596 },
 ]
 
 let extraIndex = 0
@@ -164,11 +161,25 @@ export function useRouteSimulation() {
         {
           id: orderId,
           name: address || loc.name,
-          lat: loc.lat + (Math.random() - 0.5) * 0.003,
-          lon: loc.lon + (Math.random() - 0.5) * 0.003,
+          lat: loc.lat,
+          lon: loc.lon,
         },
       ]
     })
+  }, [])
+
+  /** Keep planner labels aligned with the coordinates submitted to the API. */
+  const renameStop = useCallback((id: string, name: string) => {
+    const normalized = name.trim()
+    if (!normalized) return
+    setStops((previous) => previous.map((stop) => (
+      stop.id === id ? { ...stop, name: normalized } : stop
+    )))
+  }, [])
+
+  /** Removing a planner row must also remove its coordinate from the request. */
+  const removeStop = useCallback((id: string) => {
+    setStops((previous) => previous.filter((stop) => stop.id !== id))
   }, [])
 
   /** Split stops across two trucks and compute greedy waypoint order. */
@@ -270,5 +281,7 @@ export function useRouteSimulation() {
     totalDistance,
     addStop,
     addStopAuto,
+    renameStop,
+    removeStop,
   }
 }

@@ -46,6 +46,10 @@ function InitialRoutingResults({
   quantumJobs,
   optimizeError,
 }: InitialRoutingResultsProps) {
+  const allSolversMatch = comparisonRows.length > 1 && new Set(
+    comparisonRows.map((row) => Math.round(row.distanceMeters)),
+  ).size === 1
+
   return (
     <section className="workspace results-workspace" aria-labelledby="routing-results-title">
       <div className="results-intro">
@@ -55,6 +59,7 @@ function InitialRoutingResults({
           Review the route and algorithm comparison before starting delivery operations.
           Selected mode: <strong>{solverLabel}</strong>
         </p>
+        <p className="data-provenance">Map locations: OpenStreetMap public geography. Delivery demand and fleet fields: demo scenario data.</p>
       </div>
 
       {optimizeError && <p className="optimize-warning" role="status">{optimizeError}</p>}
@@ -108,6 +113,11 @@ function InitialRoutingResults({
               </div>
             ))}
           </div>
+          <p className="data-provenance">
+            {allSolversMatch
+              ? 'All displayed solvers found the same valid route cost on this tiny instance. This is expected for a three-stop demo and is not evidence of quantum advantage.'
+              : 'Distances differ on this instance. Compare route validity, distance, and execution time; do not treat a single run as evidence of quantum advantage.'}
+          </p>
         </section>
       )}
 

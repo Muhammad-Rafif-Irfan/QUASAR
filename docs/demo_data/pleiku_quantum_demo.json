@@ -1,0 +1,36 @@
+{
+  "title": "Pleiku small-TSP quantum demo",
+  "purpose": "Real OpenStreetMap geography with synthetic delivery demand; suitable for the verified three-stop QAOA demo only.",
+  "source": {
+    "provider": "OpenStreetMap contributors",
+    "license": "ODbL 1.0",
+    "retrieved_at": "2026-07-25",
+    "note": "Coordinates identify public map features; they are not customer addresses or operational delivery records."
+  },
+  "depot": {
+    "name": "Pleiku Stadium (demo depot)",
+    "lat": 13.9791553,
+    "lon": 108.0049003,
+    "osm_url": "https://www.openstreetmap.org/way/613415132"
+  },
+  "stops": [
+    {
+      "name": "Pleiku Airport",
+      "lat": 14.004424,
+      "lon": 108.0135476,
+      "osm_url": "https://www.openstreetmap.org/way/159974733"
+    },
+    {
+      "name": "Biển Hồ Pleiku",
+      "lat": 14.0468591,
+      "lon": 107.9960066,
+      "osm_url": "https://www.openstreetmap.org/node/13105153109"
+    },
+    {
+      "name": "Chùa Minh Đạo, Diên Phú",
+      "lat": 13.95693,
+      "lon": 107.9828185,
+      "osm_url": "https://www.openstreetmap.org/node/6813397785"
+    }
+  ]
+}

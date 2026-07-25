@@ -1,5 +1,6 @@
-import { useState, useCallback, type FormEvent } from 'react'
-import { Map, Navigation, PackageCheck, Route, Settings, TriangleAlert, Truck, type LucideIcon } from 'lucide-react'
+import { useState, useCallback, useEffect, type FormEvent } from 'react'
+import { BarChart3, Map, Navigation, PackageCheck, Route, Settings, TriangleAlert, Truck, type LucideIcon } from 'lucide-react'
+import BenchmarkAnalysis from './BenchmarkAnalysis'
 import InitialRoutingResults, { type QuantumJob } from './InitialRoutingResults'
 import LiveDeliveryAndRouting from './LiveDeliveryAndRouting'
 import RoutePlanner, { initialOrders, initialVehicles, type Order, type Vehicle } from './RoutePlanner'
@@ -8,11 +9,15 @@ import { AddNewOrderModal, ChangeAddressModal, type NewOrderDraft } from './Supp
 import { useRouteSimulation } from './useRouteSimulation'
 import {
   DEFAULT_SOLVER_ID,
+  MAX_CLASSICAL_DEMO_STOPS,
+  MAX_QAOA_STOPS,
   SOLVER_OPTIONS,
   getSolverOption,
 } from './solvers'
 
-type Screen = 'overview' | 'planner' | 'results' | 'live'
+type Screen = 'overview' | 'planner' | 'results' | 'live' | 'benchmark'
+type Theme = 'light' | 'dark'
+type FontScale = 'standard' | 'large' | 'xlarge'
 
 type Metric = {
   label: string
@@ -64,6 +69,10 @@ const historicalRecords = [
 type SettingsModalProps = {
   solverId: string
   onSolverChange: (id: string) => void
+  theme: Theme
+  onThemeChange: (theme: Theme) => void
+  fontScale: FontScale
+  onFontScaleChange: (scale: FontScale) => void
   onSave: (event: FormEvent<HTMLFormElement>) => void
   onClose: () => void
 }
@@ -90,7 +99,7 @@ function ApplicationHeader() {
   )
 }
 
-function SettingsModal({ solverId, onSolverChange, onSave, onClose }: SettingsModalProps) {
+function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontScale, onFontScaleChange, onSave, onClose }: SettingsModalProps) {
   const selected = getSolverOption(solverId)
   return (
     <div className="modal-backdrop" role="presentation">
@@ -147,6 +156,24 @@ function SettingsModal({ solverId, onSolverChange, onSave, onClose }: SettingsMo
             Parameter beta
             <input defaultValue="0.27" inputMode="decimal" />
           </label>
+          <fieldset className="accessibility-settings">
+            <legend>Accessibility</legend>
+            <label>
+              Color mode
+              <select value={theme} onChange={(event) => onThemeChange(event.target.value as Theme)} aria-label="Color mode">
+                <option value="light">Light mode</option>
+                <option value="dark">Dark mode</option>
+              </select>
+            </label>
+            <label>
+              Text size
+              <select value={fontScale} onChange={(event) => onFontScaleChange(event.target.value as FontScale)} aria-label="Text size">
+                <option value="standard">Standard</option>
+                <option value="large">Large</option>
+                <option value="xlarge">Extra large</option>
+              </select>
+            </label>
+          </fieldset>
         </div>
         <p className="settings-solver-hint">{selected.description}</p>
         <div className="settings-actions">
@@ -173,6 +200,11 @@ function OptimizationLoading({ solverLabel }: { solverLabel: string }) {
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [solverId, setSolverId] = useState(DEFAULT_SOLVER_ID)
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('quasar-theme') === 'dark' ? 'dark' : 'light'))
+  const [fontScale, setFontScale] = useState<FontScale>(() => {
+    const saved = localStorage.getItem('quasar-font-scale')
+    return saved === 'large' || saved === 'xlarge' ? saved : 'standard'
+  })
   const [orders, setOrders] = useState<Order[]>(initialOrders)
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles)
   const [currentScreen, setCurrentScreen] = useState<Screen>('overview')
@@ -184,9 +216,23 @@ function App() {
   const [quantumJobs, setQuantumJobs] = useState<QuantumJob[]>([])
   const [optimizeError, setOptimizeError] = useState<string | null>(null)
 
-  const { depot, stops, truckRoutes, totalDistance, addStop, addStopAuto } = useRouteSimulation()
+  const {
+    depot,
+    stops,
+    truckRoutes,
+    totalDistance,
+    addStop,
+    addStopAuto,
+    renameStop,
+    removeStop,
+  } = useRouteSimulation()
   const [newStopIds, setNewStopIds] = useState<Set<string>>(new Set())
   const selectedSolver = getSolverOption(solverId)
+
+  useEffect(() => {
+    localStorage.setItem('quasar-theme', theme)
+    localStorage.setItem('quasar-font-scale', fontScale)
+  }, [theme, fontScale])
 
   const handleStartRouting = () => {
     setCurrentScreen('planner')
@@ -201,6 +247,17 @@ function App() {
     setIsOptimizing(true)
     setOptimizeError(null)
     const solver = getSolverOption(solverId)
+
+    if (stops.length > MAX_CLASSICAL_DEMO_STOPS) {
+      setOptimizeError(`This demo accepts at most ${MAX_CLASSICAL_DEMO_STOPS} stops per API run.`)
+      setIsOptimizing(false)
+      return
+    }
+    if (solver.algorithms.includes('qaoa') && stops.length > MAX_QAOA_STOPS) {
+      setOptimizeError(`QAOA is verified only for up to ${MAX_QAOA_STOPS} stops. Choose a classical solver for this route.`)
+      setIsOptimizing(false)
+      return
+    }
 
     const payload = {
       depot: { name: depot.name, lat: depot.lat, lon: depot.lon },
@@ -278,7 +335,25 @@ function App() {
     } finally {
       setIsOptimizing(false)
     }
-  }, [solverId, depot, stops, totalDistance])
+  }, [solverId, depot, stops])
+
+  const addPlannerDeliveryPoint = useCallback(() => {
+    if (stops.length >= MAX_CLASSICAL_DEMO_STOPS) {
+      setOptimizeError(`The classical demo is capped at ${MAX_CLASSICAL_DEMO_STOPS} stops.`)
+      return
+    }
+    const nextNode = Math.max(0, ...orders.map((order) => Number(order.id.replace('N', '')) || 0)) + 1
+    const id = `N${nextNode}`
+    setOrders((currentOrders) => [
+      ...currentOrders,
+      { id, address: '', weight: '', startTime: '09:00', endTime: '10:00' },
+    ])
+    addStopAuto(id)
+  }, [addStopAuto, orders, stops.length])
+
+  const removePlannerDeliveryPoint = useCallback((id: string) => {
+    removeStop(id)
+  }, [removeStop])
 
   const updateAffectedAddress = (address: string) => {
     setOrders((currentOrders) => currentOrders.map((order) => (
@@ -326,9 +401,10 @@ function App() {
   }, [orders, addStop])
 
   return (
-    <main className="app">
+    <main className={`app theme-${theme} font-${fontScale}`}>
       <ApplicationHeader />
 
+      <div className="screen-transition" key={currentScreen}>
       {currentScreen === 'overview' && (
         <>
           <section className="workspace" id="overview" aria-labelledby="page-title">
@@ -341,6 +417,9 @@ function App() {
               <div className="page-actions">
                 <button className="settings-button" onClick={() => setSettingsOpen(true)}>
                   <Settings size={16} /> Settings
+                </button>
+                <button className="settings-button" onClick={() => setCurrentScreen('benchmark')}>
+                  <BarChart3 size={16} /> Benchmark
                 </button>
                 <button className="route-action" onClick={handleStartRouting}>
                   Start Routing <Navigation size={16} />
@@ -437,6 +516,9 @@ function App() {
           onOpenSettings={() => setSettingsOpen(true)}
           onRunOptimization={() => { void runOptimization() }}
           optimizeError={optimizeError}
+          onAddDeliveryPoint={addPlannerDeliveryPoint}
+          onRemoveDeliveryPoint={removePlannerDeliveryPoint}
+          onRenameDeliveryPoint={renameStop}
         />
       )}
       {currentScreen === 'results' && (
@@ -469,12 +551,24 @@ function App() {
           newStopIds={newStopIds}
         />
       )}
+      {currentScreen === 'benchmark' && (
+        <BenchmarkAnalysis
+          rows={comparisonRows}
+          quantumJobs={quantumJobs}
+          onBack={() => setCurrentScreen('overview')}
+        />
+      )}
+      </div>
 
       {isOptimizing && <OptimizationLoading solverLabel={selectedSolver.label} />}
       {settingsOpen && (
         <SettingsModal
           solverId={solverId}
           onSolverChange={setSolverId}
+          theme={theme}
+          onThemeChange={setTheme}
+          fontScale={fontScale}
+          onFontScaleChange={setFontScale}
           onSave={handleSaveSettings}
           onClose={() => setSettingsOpen(false)}
         />
