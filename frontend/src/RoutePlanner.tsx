@@ -32,9 +32,9 @@ type RoutePlannerProps = {
 // Initial mock data is owned by App so it survives navigation to Screen 03.
 export const initialOrders: Order[] = DATASETS[0].orders
 export const initialVehicles: Vehicle[] = [
-  { id: 'truck-1', name: 'Truck 1', capacity: '80' },
-  { id: 'truck-2', name: 'Truck 2', capacity: '100' },
-  { id: 'truck-3', name: 'Truck 3', capacity: '60' },
+  { id: 'truck-1', name: 'Truck 1', capacity: '250' },
+  { id: 'truck-2', name: 'Truck 2', capacity: '300' },
+  { id: 'truck-3', name: 'Truck 3', capacity: '200' },
 ]
 
 function RoutePlanner({ orders, setOrders, vehicles, setVehicles, isOptimizing, onBack, onOpenSettings, onRunOptimization, activeDataset, onDatasetChange }: RoutePlannerProps) {

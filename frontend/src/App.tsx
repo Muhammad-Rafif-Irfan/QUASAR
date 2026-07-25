@@ -41,11 +41,11 @@ const metrics: Metric[] = [
 // Recent activity mock data shown in the Operations Overview panel.
 const recentActivities: Activity[] = [
   { time: '10:32', title: 'Truck T3 completed route', detail: 'Returned to depot · 2h 15m · 3 deliveries', kind: 'delivered' },
-  { time: '10:18', title: 'New order N9 received', detail: '42 Nguyễn Tri Phương, Thanh Khê · 15 kg', kind: 'tracking' },
+  { time: '10:18', title: 'New order received', detail: 'Chợ Đầm, Đống Đa, Quy Nhơn · 48 kg', kind: 'tracking' },
   { time: '09:45', title: '8 packages delivered', detail: 'Truck T1 completed morning batch · 1h 52m', kind: 'delivered' },
-  { time: '09:12', title: 'Truck T2 heading to 233 Ngô Quyền', detail: 'ETA 12 min · carrying 62 kg', kind: 'tracking' },
+  { time: '09:12', title: 'Truck T2 heading to Cảng Quy Nhơn', detail: 'ETA 12 min · carrying 80 kg', kind: 'tracking' },
   { time: '08:40', title: '13 packages delivered', detail: 'Truck T1 returned to depot · 3h 26m', kind: 'delivered' },
-  { time: '08:17', title: 'Route recalculated', detail: 'Added N5 to Truck T2 · total distance +2.3 km', kind: 'tracking' },
+  { time: '08:17', title: 'Route recalculated', detail: 'Added R15 to Truck T2 · total distance +2.3 km', kind: 'tracking' },
 ]
 
 const deliveryTrend = [42, 56, 51, 68, 62, 78, 73, 81, 76, 88, 85, 92, 89, 95]

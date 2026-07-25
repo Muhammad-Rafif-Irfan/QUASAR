@@ -78,7 +78,7 @@ const PRESET_DATA: BenchmarkData = {
     km_saved: 13.63,
     km_saved_pct: 35.6,
     co2_saved_kg: 2.862,
-    fuel_saved_liters: 1.090,
+    fuel_saved_liters: 1.636,
     deliveries_optimized: 25,
   },
   entries: [
@@ -331,7 +331,7 @@ export default function BenchmarkAnalysis({ onBack }: BenchmarkAnalysisProps) {
         <div>
           <p className="eyebrow">Quantum vs Classical</p>
           <h1 id="benchmark-title">Benchmark Analysis</h1>
-          <p className="subtitle">Compare OR-Tools, QUBO+QAOA, and QAI+HOBO across problem sizes N=4→8 on Da Nang delivery routes.</p>
+          <p className="subtitle">Compare OR-Tools, QUBO+QAOA, and QAI+HOBO across problem sizes N=4→8 on Quy Nhơn delivery routes.</p>
         </div>
         <div className="page-actions">
           <button type="button" className="settings-button" onClick={onBack}><ArrowLeft size={16} /> Back</button>
@@ -359,6 +359,7 @@ export default function BenchmarkAnalysis({ onBack }: BenchmarkAnalysisProps) {
               <p className="sdg-card__label">UN SDG 11 — Sustainable Cities</p>
               <strong className="sdg-card__value">{sdg.km_saved.toFixed(1)} <span>km saved</span></strong>
               <p className="sdg-card__detail">{sdg.km_saved_pct.toFixed(1)}% reduction vs naive routing across {sdg.deliveries_optimized} deliveries</p>
+              <p className="sdg-card__detail" style={{ marginTop: 4, opacity: 0.8, fontSize: '0.75rem' }}>Projected: ~{Math.round(sdg.km_saved / sdg.deliveries_optimized * 500)} km/day for 500-delivery fleet → {(sdg.km_saved / sdg.deliveries_optimized * 500 * 0.21).toFixed(0)} kg CO₂/day</p>
             </div>
           </article>
           <article className="sdg-card">
@@ -369,7 +370,7 @@ export default function BenchmarkAnalysis({ onBack }: BenchmarkAnalysisProps) {
           <article className="sdg-card">
             <p className="sdg-card__label">Fuel Saved</p>
             <strong className="sdg-card__value">{sdg.fuel_saved_liters.toFixed(2)} <span>liters</span></strong>
-            <p className="sdg-card__detail">Based on 0.08 L/km average consumption</p>
+            <p className="sdg-card__detail">Based on 0.12 L/km urban truck consumption</p>
           </article>
           <article className="sdg-card">
             <p className="sdg-card__label">Optimized vs Naive</p>

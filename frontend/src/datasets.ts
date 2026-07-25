@@ -129,7 +129,7 @@ export const DATASETS: Dataset[] = [
     label: 'Real Quy Nhơn (15 points)',
     description: '15 verified locations — port, supermarkets, hospitals, universities, industrial zones',
     source: 'OpenStreetMap (ODbL) + Google Maps — verified July 2026',
-    depot: { name: 'KCN Phú Tài, Quy Nhơn', lat: 13.7445, lon: 109.2090 },
+    depot: { name: 'Cổng KCN Phú Tài, Quy Nhơn', lat: 13.7460, lon: 109.2060 },
     orders: REAL_ORDERS,
     coords: REAL_COORDS,
   },

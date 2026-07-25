@@ -120,8 +120,8 @@ function AnimatedTrucks({ routes, isLive }: { routes: TruckRoute[]; isLive: bool
   const animRef = useRef<number>(0)
   const startTimeRef = useRef<number>(0)
 
-  // Duration for one full route traversal (ms)
-  const CYCLE_DURATION = 20000
+  // Duration for one full route traversal (ms) — 60s for realistic pacing
+  const CYCLE_DURATION = 60000
 
   useEffect(() => {
     if (!isLive) {

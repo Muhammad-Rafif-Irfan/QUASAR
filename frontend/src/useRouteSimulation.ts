@@ -43,16 +43,16 @@ function coordsToStops(coords: Record<string, DatasetCoord>): MapLocation[] {
   }))
 }
 
-/** Extra location pool for dynamically added orders. */
+/** Extra location pool for dynamically added orders — Quy Nhơn area. */
 const EXTRA_LOCATIONS: { name: string; lat: number; lon: number }[] = [
-  { name: 'Son Tra District', lat: 16.0930, lon: 108.2480 },
-  { name: 'Lien Chieu District', lat: 16.0780, lon: 108.1510 },
-  { name: 'Thanh Khe Market', lat: 16.0600, lon: 108.1880 },
-  { name: 'Ngu Hanh Son', lat: 16.0190, lon: 108.2520 },
-  { name: 'Hoa Vang District', lat: 16.0070, lon: 108.1350 },
-  { name: 'My Khe Beach', lat: 16.0560, lon: 108.2470 },
-  { name: 'Dragon Bridge Area', lat: 16.0612, lon: 108.2278 },
-  { name: 'Marble Mountains', lat: 16.0035, lon: 108.2630 },
+  { name: 'Ghềnh Ráng, Quy Nhơn', lat: 13.7410, lon: 109.2310 },
+  { name: 'Nhơn Bình, Quy Nhơn', lat: 13.7830, lon: 109.2050 },
+  { name: 'Trần Hưng Đạo, Quy Nhơn', lat: 13.7740, lon: 109.2270 },
+  { name: 'Ngô Mây, Quy Nhơn', lat: 13.7690, lon: 109.2310 },
+  { name: 'Đống Đa, Quy Nhơn', lat: 13.7650, lon: 109.2380 },
+  { name: 'Lê Hồng Phong, Quy Nhơn', lat: 13.7580, lon: 109.2250 },
+  { name: 'Bùi Thị Xuân, Quy Nhơn', lat: 13.7500, lon: 109.2130 },
+  { name: 'Phước Sơn, Tuy Phước', lat: 13.7950, lon: 109.1650 },
 ]
 
 let extraIndex = 0
@@ -70,6 +70,9 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number): numb
 }
 
 // ─── Greedy nearest-neighbour route ───────────────────────────────────
+// NOTE: This frontend greedy preview does NOT enforce time-window constraints.
+// Time windows (startTime/endTime per order) are enforced by the backend
+// OR-Tools solver during the actual optimization phase.
 function greedyRoute(depot: MapLocation, stops: MapLocation[]): MapLocation[] {
   if (stops.length === 0) return [depot, depot]
   const remaining = [...stops]
@@ -188,27 +191,47 @@ export function useRouteSimulation(datasetKey: string = 'demo') {
     })
   }, [])
 
-  /** Split stops across three trucks and compute greedy waypoint order. */
+  /** Assign stops to trucks respecting capacity, then compute greedy waypoint order. */
   const baseRoutes = useMemo(() => {
-    const third = Math.ceil(stops.length / 3)
-    const truck1Stops = stops.slice(0, third)
-    const truck2Stops = stops.slice(third, third * 2)
-    const truck3Stops = stops.slice(third * 2)
-
-    const truckDefs = [
-      { id: 'truck-1', name: 'Truck 1', capacity: '80 kg', color: '#4f46e5', stops: truck1Stops },
-      { id: 'truck-2', name: 'Truck 2', capacity: '100 kg', color: '#059669', stops: truck2Stops },
-      { id: 'truck-3', name: 'Truck 3', capacity: '60 kg', color: '#e11d48', stops: truck3Stops },
+    const trucks = [
+      { id: 'truck-1', name: 'Truck 1', capacityKg: 250, color: '#4f46e5', stops: [] as MapLocation[] },
+      { id: 'truck-2', name: 'Truck 2', capacityKg: 300, color: '#059669', stops: [] as MapLocation[] },
+      { id: 'truck-3', name: 'Truck 3', capacityKg: 200, color: '#e11d48', stops: [] as MapLocation[] },
     ]
+
+    // First-Fit Decreasing bin-packing: sort stops by weight desc, assign to first truck with room
+    const sorted = [...stops].sort((a, b) => (Number(b.weight) || 0) - (Number(a.weight) || 0))
+    const truckLoads = [0, 0, 0]
+
+    for (const stop of sorted) {
+      const w = Number(stop.weight) || 0
+      // Find first truck with enough remaining capacity
+      let assigned = false
+      for (let t = 0; t < trucks.length; t++) {
+        if (truckLoads[t] + w <= trucks[t].capacityKg) {
+          trucks[t].stops.push(stop)
+          truckLoads[t] += w
+          assigned = true
+          break
+        }
+      }
+      // If no truck has room, assign to least-loaded truck (overflow — still better than ignoring)
+      if (!assigned) {
+        const minIdx = truckLoads.indexOf(Math.min(...truckLoads))
+        trucks[minIdx].stops.push(stop)
+        truckLoads[minIdx] += w
+      }
+    }
 
     const routes: { truckId: string; truckName: string; capacity: string; color: string; waypoints: MapLocation[]; orderIds: string[] }[] = []
 
-    for (const def of truckDefs) {
+    for (let t = 0; t < trucks.length; t++) {
+      const def = trucks[t]
       if (def.stops.length > 0) {
         routes.push({
           truckId: def.id,
           truckName: def.name,
-          capacity: def.capacity,
+          capacity: `${truckLoads[t]}/${def.capacityKg} kg`,
           color: def.color,
           waypoints: greedyRoute(depot, def.stops),
           orderIds: def.stops.map((s) => s.id),

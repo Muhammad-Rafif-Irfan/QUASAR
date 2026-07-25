@@ -1,7 +1,7 @@
 # QUASAR — Technical Write-up
 ## Quantum-Assisted Supply-chain Allocation & Routing
 
-**Team:** QUASAR | **Track:** Sustainable Transportation & Smart Urban Mobility (Idea #8)  
+**Team:** TEAM 23 | **Track:** Sustainable Transportation & Smart Urban Mobility (Idea #8)  
 **Hackathon:** QC4SG Vietnam 2026 — The 2nd SEA Quantathon  
 **SDG Alignment:** SDG-11 (Sustainable Cities), SDG-13 (Climate Action)
 
@@ -172,7 +172,7 @@ Using the optimized routing benchmark (N=4 through N=8, 25 total deliveries):
 | Optimized route distance | 24.61 km |
 | **Distance saved** | **13.63 km (35.6%)** |
 | **CO₂ emissions avoided** | **2.86 kg** |
-| **Fuel saved** | **1.09 liters** |
+| **Fuel saved** | **1.64 liters** |
 
 **Scaling projection:** A mid-size logistics operator handling 500 deliveries/day in Quy Nhơn could save ~272 km/day → **57 kg CO₂/day → 20.8 tonnes CO₂/year**.
 

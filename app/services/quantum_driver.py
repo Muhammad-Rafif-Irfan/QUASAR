@@ -464,22 +464,22 @@ def run_optimization_pipeline(run_id: str, depot: dict, stops: list[dict]):
 #  BENCHMARK SUITE — Quantum vs Classical across multiple problem sizes
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Da Nang demo coordinates (same as ibm2.py and frontend demo data)
+# Quy Nhơn delivery coordinates (matches frontend real_quynhon dataset)
 BENCHMARK_POINTS = [
-    {"name": "Depot Pusat",   "lat": 16.0544, "lon": 108.2022},
-    {"name": "Pelabuhan",     "lat": 16.0650, "lon": 108.2200},
-    {"name": "Pasar Con",     "lat": 16.0450, "lon": 108.2100},
-    {"name": "Bandara",       "lat": 16.0438, "lon": 108.1990},
-    {"name": "Pantai",        "lat": 16.0500, "lon": 108.1900},
-    {"name": "Jembatan Naga", "lat": 16.0611, "lon": 108.2272},
-    {"name": "Han Market",    "lat": 16.0680, "lon": 108.2241},
-    {"name": "Lotte Mart",    "lat": 16.0333, "lon": 108.2211},
+    {"name": "Cổng KCN Phú Tài", "lat": 13.7460, "lon": 109.2060},
+    {"name": "Cảng Quy Nhơn",     "lat": 13.7787, "lon": 109.2425},
+    {"name": "GO! Quy Nhơn",      "lat": 13.7520, "lon": 109.2290},
+    {"name": "Co.opmart",          "lat": 13.7675, "lon": 109.2220},
+    {"name": "ĐH Quy Nhơn",      "lat": 13.7594, "lon": 109.2173},
+    {"name": "BV Đa khoa",        "lat": 13.7730, "lon": 109.2290},
+    {"name": "Chợ Lớn QN",        "lat": 13.7700, "lon": 109.2250},
+    {"name": "FPT Software",      "lat": 13.7470, "lon": 109.2160},
 ]
 
 # Average CO₂ emission factor for a small delivery truck (kg CO₂ per km)
 CO2_KG_PER_KM = 0.21
-# Average fuel consumption for a small delivery truck (liters per km)
-FUEL_L_PER_KM = 0.08
+# Average fuel consumption for a Vietnamese urban delivery truck (liters per km)
+FUEL_L_PER_KM = 0.12
 
 HONEST_ASSESSMENT = (
     "NISQ-Era Limitations & Honest Scaling Discussion\n\n"
