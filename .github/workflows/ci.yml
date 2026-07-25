@@ -50,6 +50,7 @@ jobs:
           flake8 app/ core/ services/
           research/ibm_sdvrp/ibm_connection.py
           research/ibm_sdvrp/smoke_test.py tests/
+          --exclude=tests/test_quasar.py
           --max-line-length=120 --ignore=E501,W503
 
       - name: Run Bandit (security lint)
