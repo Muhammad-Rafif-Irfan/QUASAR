@@ -233,7 +233,7 @@ def run_qaoa_plus_ibm(payload: dict) -> dict:
         isa_circ = isa_ansatz.assign_parameters(bind_dict)
         job = estimator.run(pubs=[(isa_circ, [isa_obs])])
         job_ids.append(job.job_id())
-        val_norm = float(job.result()[0].data.evs)
+        val_norm = float(job.result()[0].data.evs.item())
         val = val_norm * max_c
         cost_history.append(val)
         n_evals[0] += 1
@@ -298,5 +298,6 @@ def run_qaoa_plus_ibm(payload: dict) -> dict:
         "algorithm":    "QAOA+",
         "job_ids":      job_ids,
         "success_prob": round(best_prob, 4),
+        "counts":       counts,
         **_decode_result(best_bs, p, matrix_orig),
     }

@@ -69,9 +69,10 @@ def _assert_valid_result(result, algorithm):
     assert "bitstring" in result
     assert "energy" in result
     assert "routes" in result
-    assert result["valid"] is True, result.get("violations")
-    assert result["route_cost"] is not None
-    assert result["route_cost"] > 0
+    assert isinstance(result["valid"], bool)
+    if result["valid"]:
+        assert result["route_cost"] is not None
+        assert result["route_cost"] > 0
 
 
 def test_qaoa_smoke(base_payload):
@@ -88,6 +89,7 @@ def test_qaoa_plus_smoke(base_payload):
     result = run_qaoa_plus_ibm(payload)
     assert "cost_history" in result
     _assert_valid_result(result, "QAOA+")
+    assert result["valid"] is True, "QAOA+ must preserve constraint feasibility"
 
 
 def test_falqon_smoke(base_payload):

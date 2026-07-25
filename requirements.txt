@@ -11,3 +11,6 @@ folium
 qiskit
 qiskit-ibm-runtime
 ortools
+qiskit-aer
+pytest
+httpx

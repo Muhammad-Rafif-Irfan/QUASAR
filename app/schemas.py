@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -196,3 +196,64 @@ class QuantumConnectionResponse(BaseModel):
     backend_name: Optional[str] = None
     backend_qubits: Optional[int] = None
     message: str
+
+
+class WarmStartDeliveryAssignment(BaseModel):
+    """One position-aware delivery for the experimental SDVRP warm-start."""
+
+    vehicle_id: int = Field(..., ge=0, le=3)
+    route_position: int = Field(..., ge=1, le=16)
+    customer_id: int = Field(..., ge=0, le=15)
+    quantity: float = Field(..., gt=0, le=100_000)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class QuantumWarmStartRequest(BaseModel):
+    """Bounded input for the experimental QAOA+ local-improvement sandbox.
+
+    The caller supplies a validated classical seed.  This endpoint deliberately
+    supports only local simulation or a deterministic classical control run;
+    it never submits an IBM job from a dashboard action.
+    """
+
+    matrix: List[List[float]] = Field(..., min_length=2, max_length=16)
+    demands: List[float] = Field(..., min_length=2, max_length=16)
+    capacities: List[float] = Field(..., min_length=1, max_length=4)
+    starting_nodes: List[int] = Field(..., min_length=1, max_length=4)
+    routes: Dict[str, List[int]] = Field(..., min_length=1, max_length=4)
+    deliveries: List[WarmStartDeliveryAssignment] = Field(default_factory=list, max_length=64)
+    problem_type: Literal["cvrp", "sdvrp"] = "cvrp"
+    executor: Literal["classical", "local"] = "local"
+    reps: int = Field(default=1, ge=1, le=2)
+    maxiter: int = Field(default=20, ge=1, le=40)
+    shots: int = Field(default=512, ge=16, le=2048)
+    max_candidates: int = Field(default=8, ge=2, le=10)
+    neighborhood_size: int = Field(default=6, ge=1, le=8)
+    polishing_iterations: int = Field(default=10, ge=0, le=20)
+    random_seed: int = Field(default=42, ge=0, le=2_147_483_647)
+    initialization: Literal["no-op", "w-state"] = "w-state"
+    xy_topology: Literal["ring", "full", "star"] = "ring"
+
+    @model_validator(mode="after")
+    def warm_start_shape_must_be_small_and_consistent(self):
+        node_count = len(self.matrix)
+        if any(len(row) != node_count for row in self.matrix):
+            raise ValueError("matrix must be square")
+        if len(self.demands) != node_count:
+            raise ValueError("demands must have one value per matrix node")
+        if len(self.capacities) != len(self.starting_nodes):
+            raise ValueError("capacities and starting_nodes must have the same length")
+        expected_routes = {str(index) for index in range(len(self.capacities))}
+        if set(self.routes) != expected_routes:
+            raise ValueError("routes must contain exactly one route for every vehicle ID")
+        return self
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class QuantumWarmStartResponse(BaseModel):
+    """Execution evidence for the bounded QAOA+ warm-start experiment."""
+
+    mode: Literal["experimental_quantum_warm_start"] = "experimental_quantum_warm_start"
+    result: Dict[str, Any]

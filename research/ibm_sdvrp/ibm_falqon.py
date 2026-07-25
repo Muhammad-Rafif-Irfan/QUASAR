@@ -227,7 +227,7 @@ def run_falqon_ibm(payload: dict) -> dict:
         # ── ⟨H_p⟩ via Estimator ──
         job_est = estimator.run(pubs=[(isa_qc, [isa_obs])])
         job_ids.append(job_est.job_id())
-        energy = float(job_est.result()[0].data.evs) * max_c
+        energy = float(job_est.result()[0].data.evs.item()) * max_c
         energy_history.append(energy)
         print(f"    ⟨H_p⟩ = {energy:.4f}")
 

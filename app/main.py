@@ -25,6 +25,7 @@ from app.database import engine, get_db
 import app.models as models
 import app.schemas as schemas
 from app.services.quantum_driver import run_optimization_pipeline
+from app.services.quantum_hybrid.warm_start import run_quasar_qaoa_xy_hybrid
 
 # Middleware — Security, Rate Limiting, Observability
 from app.middleware.security import (
@@ -369,6 +370,7 @@ def inspect_runtime(db: Session = Depends(get_db)):
             "GET /health",
             "GET /api/v1/inspect",
             "POST /api/v1/quantum/connection-check",
+            "POST /api/v1/quantum/warm-start",
             "POST /api/v1/optimize",
             "GET /api/v1/optimize/{run_id}",
             "GET /docs",
@@ -446,6 +448,40 @@ def optimize_route(
         status="PENDING",
         message="Optimization pipeline accepted. Poll the run endpoint for verified results; QAOA uses IBM hardware only when a token is configured.",
     )
+
+
+@app.post(
+    "/api/v1/quantum/warm-start",
+    response_model=schemas.QuantumWarmStartResponse,
+    status_code=status.HTTP_200_OK,
+)
+def run_quantum_warm_start(
+    request: schemas.QuantumWarmStartRequest,
+):
+    """Evaluate Aga's bounded QAOA+ move-selection experiment safely.
+
+    This endpoint refines a caller-provided classical CVRP/SDVRP seed.  It is
+    intentionally separate from delivery operations: IBM execution is refused,
+    inputs are tightly bounded, and the solver returns the original seed unless
+    an independently validated strict improvement is found.
+    """
+    payload = request.model_dump()
+    payload["deliveries"] = [item.model_dump() for item in request.deliveries]
+    try:
+        result = run_quasar_qaoa_xy_hybrid(payload)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        ) from error
+    except RuntimeError as error:
+        logger.warning("Quantum warm-start failed safely: %s", error)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The experimental warm-start is temporarily unavailable.",
+        ) from error
+
+    return schemas.QuantumWarmStartResponse(result=result)
 
 
 @app.get(

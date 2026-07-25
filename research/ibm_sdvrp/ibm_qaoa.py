@@ -105,7 +105,7 @@ def run_qaoa_ibm(payload: dict) -> dict:
         job = estimator.run(pubs=[(isa_circ, [isa_obs])])
         job_ids.append(job.job_id())
         # Optimizer works in normalized space; rescale for logging
-        val_norm = float(job.result()[0].data.evs)
+        val_norm = float(job.result()[0].data.evs.item())
         val = val_norm * max_c
         cost_history.append(val)
         n_evals[0] += 1
@@ -166,5 +166,6 @@ def run_qaoa_ibm(payload: dict) -> dict:
         "algorithm":    "QAOA",
         "job_ids":      job_ids,
         "success_prob": round(best_prob, 4),
+        "counts":       counts,
         **_decode_result(best_bs, p, matrix_orig),
     }
