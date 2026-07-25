@@ -10,10 +10,14 @@ type RoutingDetailsModalProps = {
 }
 
 function RoutingDetailsModal({ onClose, solverLabel, comparisonRows, runEvidence }: RoutingDetailsModalProps) {
-  const best = [...comparisonRows].sort((a, b) => a.distanceMeters - b.distanceMeters)[0]
+  const bestDistance = comparisonRows.length ? Math.min(...comparisonRows.map((row) => row.distanceMeters)) : null
+  const tiedBest = bestDistance == null ? [] : comparisonRows.filter((row) => Math.abs(row.distanceMeters - bestDistance) < 0.5)
+  const best = tiedBest[0]
+  const bestAlgorithm = tiedBest.length > 1 ? `Tie (${tiedBest.map((row) => row.algorithm).join(', ')})` : best?.algorithm || '—'
+  const formatTime = (milliseconds: number) => milliseconds < 1 ? '< 1 ms' : `${milliseconds.toFixed(0)} ms`
   const details: Array<[string, string]> = [
     ['Selected mode', solverLabel],
-    ['Best algorithm', best?.algorithm || '—'],
+    ['Best algorithm', bestAlgorithm],
     ['Best distance', best ? `${(best.distanceMeters / 1000).toFixed(2)} km` : '—'],
     ['Solvers compared', String(comparisonRows.length || 0)],
     ['Route validity', best?.isValid ? 'Valid' : 'Pending'],
@@ -55,7 +59,7 @@ function RoutingDetailsModal({ onClose, solverLabel, comparisonRows, runEvidence
               <div className="comparison-row" role="row" key={row.algorithm}>
                 <strong>{row.algorithm}</strong>
                 <span>{(row.distanceMeters / 1000).toFixed(2)} km</span>
-                <span>{row.executionTimeMs.toFixed(0)} ms</span>
+                <span>{formatTime(row.executionTimeMs)}</span>
               </div>
             ))}
           </div>

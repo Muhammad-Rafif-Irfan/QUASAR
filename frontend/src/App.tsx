@@ -351,6 +351,7 @@ function App() {
           error_message?: string | null
           results?: Array<{
             algorithm: string
+            tour: number[]
             distance_meters: number
             execution_time_ms: number
             is_valid: boolean
@@ -391,7 +392,23 @@ function App() {
             stopsCount: statusBody.stops_count,
             distanceMetric: statusBody.distance_metric ?? null,
           })
-          applyOptimizedFleetRoutes(statusBody.fleet_routes || [])
+          const fleetRoutes = statusBody.fleet_routes || []
+          if (fleetRoutes.length > 0) {
+            applyOptimizedFleetRoutes(fleetRoutes)
+          } else {
+            // A single-vehicle TSP run must render the exact tour returned by
+            // the API, rather than the old frontend-only two-truck preview.
+            const mapResult = (statusBody.results || []).find((row) => row.algorithm === 'OR-Tools') || statusBody.results?.[0]
+            const vehicle = vehicles[0] || { id: 'truck-1', name: 'Truck 1', capacity: '—' }
+            applyOptimizedFleetRoutes(mapResult ? [{
+              vehicle_id: vehicle.id,
+              vehicle_name: vehicle.name,
+              capacity: Number(vehicle.capacity) || 0,
+              load: Array.from(demandById.values()).reduce((sum, demand) => sum + demand, 0),
+              route: mapResult.tour,
+              distance_meters: mapResult.distance_meters,
+            }] : [])
+          }
           completed = true
           break
         }
