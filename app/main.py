@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 # App Modules
@@ -56,6 +57,13 @@ async def lifespan(app: FastAPI):
 
     # Create database tables
     models.Base.metadata.create_all(bind=engine)
+    # ``create_all`` does not add columns to existing SQLite demo databases.
+    # Keep this additive migration local, idempotent, and safe for old runs.
+    if engine.dialect.name == "sqlite":
+        columns = {column["name"] for column in inspect(engine).get_columns("benchmark_runs")}
+        if "distance_metric" not in columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE benchmark_runs ADD COLUMN distance_metric VARCHAR"))
     logger.info("Database schema initialized.")
 
     # Ensure static directory exists for Folium maps
@@ -496,6 +504,7 @@ def get_run_status(run_id: str, db: Session = Depends(get_db)):
         depot_lat=run.depot_lat,
         depot_lon=run.depot_lon,
         stops_count=run.stops_count,
+        distance_metric=run.distance_metric,
         results=results_schema,
         quantum_jobs=jobs_schema,
     )

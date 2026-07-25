@@ -1,5 +1,6 @@
 import { ArrowLeft, CheckCircle2, Cpu, TriangleAlert } from 'lucide-react'
 import type { QuantumJob } from './InitialRoutingResults'
+import type { RunEvidence } from './App'
 
 export type BenchmarkRow = {
   algorithm: string
@@ -13,12 +14,13 @@ type BenchmarkAnalysisProps = {
   rows: BenchmarkRow[]
   quantumJobs: QuantumJob[]
   onBack: () => void
+  runEvidence: RunEvidence | null
 }
 
 const formatDistance = (meters: number) => `${(meters / 1000).toFixed(2)} km`
 
 /** Displays only the latest completed API response; it has no preset data. */
-export default function BenchmarkAnalysis({ rows, quantumJobs, onBack }: BenchmarkAnalysisProps) {
+export default function BenchmarkAnalysis({ rows, quantumJobs, onBack, runEvidence }: BenchmarkAnalysisProps) {
   const bestDistance = rows.length ? Math.min(...rows.map((row) => row.distanceMeters)) : null
 
   return (
@@ -44,7 +46,11 @@ export default function BenchmarkAnalysis({ rows, quantumJobs, onBack }: Benchma
           </section>
           <article className="panel planner-panel">
             <div className="planner-panel-heading"><div><p className="section-label">Latest completed run</p><h2>Solver comparison</h2></div></div>
-            <div className="planner-table" role="table" aria-label="Verified benchmark results">
+            <p className="benchmark-provenance">
+              Run <code>{runEvidence?.runId ?? 'unavailable'}</code> · {runEvidence?.stopsCount ?? 0} stops ·
+              {' '}{runEvidence?.distanceMetric ?? 'distance basis unavailable for this historical run'}
+            </p>
+            <div className="planner-table benchmark-table" role="table" aria-label="Verified benchmark results">
               <div className="planner-table-head" role="row"><span>Algorithm</span><span>Distance</span><span>Time</span><span>Valid</span><span>Ratio</span></div>
               {rows.map((row) => <div className="planner-table-row" role="row" key={row.algorithm}><strong>{row.algorithm}</strong><span>{formatDistance(row.distanceMeters)}</span><span>{row.executionTimeMs.toFixed(1)} ms</span><span>{row.isValid ? 'Yes' : 'No'}</span><span>{row.approximationRatio === null ? '—' : row.approximationRatio.toFixed(3)}</span></div>)}
             </div>

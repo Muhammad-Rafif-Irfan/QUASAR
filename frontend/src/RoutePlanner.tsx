@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
-import { ArrowLeft, PackageCheck, Plus, Settings, Trash2, Truck, Upload } from 'lucide-react'
+import { ArrowLeft, PackageCheck, Plus, Trash2, Truck, Upload } from 'lucide-react'
 import { SOLVER_OPTIONS, getSolverOption } from './solvers'
 import { demoPresets, type DemoPresetId } from './useRouteSimulation'
 
@@ -26,7 +26,6 @@ type RoutePlannerProps = {
   solverId: string
   onSolverChange: (id: string) => void
   onBack: () => void
-  onOpenSettings: () => void
   onRunOptimization: () => void
   optimizeError: string | null
   onAddDeliveryPoint: () => void
@@ -55,7 +54,6 @@ function RoutePlanner({
   solverId,
   onSolverChange,
   onBack,
-  onOpenSettings,
   onRunOptimization,
   optimizeError,
   onAddDeliveryPoint,
@@ -107,11 +105,6 @@ function RoutePlanner({
           <button type="button" className="planner-nav-item" disabled>Live Delivery and Routing</button>
           <button type="button" className="planner-nav-item" disabled>Routing Details Modal</button>
         </nav>
-        <div className="planner-sidebar-footer">
-          <button type="button" className="planner-nav-item planner-settings-link" onClick={onOpenSettings}>
-            <Settings size={15} /> Settings
-          </button>
-        </div>
       </aside>
 
       <section className="workspace planner-workspace" aria-labelledby="route-planner-title">

@@ -19,6 +19,9 @@ class BenchmarkRun(Base):
     depot_lon = Column(Float, nullable=False)
     stops_count = Column(Integer, default=0)
     stops_data = Column(Text, nullable=True)  # JSON serialized input stops
+    # Exact metric used to construct this run's cost matrix. This is recorded
+    # per run because road-network fetching may safely fall back to Haversine.
+    distance_metric = Column(String, nullable=True)
 
     results = relationship(
         "BenchmarkResult", back_populates="run", cascade="all, delete-orphan")

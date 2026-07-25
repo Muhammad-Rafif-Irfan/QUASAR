@@ -111,6 +111,7 @@ class RunStatusResponse(BaseModel):
     depot_lat: float
     depot_lon: float
     stops_count: int
+    distance_metric: Optional[str] = None
     results: List[BenchmarkResultSchema] = Field(default_factory=list)
     quantum_jobs: List[QuantumJobSchema] = Field(default_factory=list)
 

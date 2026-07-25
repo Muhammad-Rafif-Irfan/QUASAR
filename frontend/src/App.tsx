@@ -53,6 +53,12 @@ type ComparisonRow = {
   approximationRatio: number | null
 }
 
+export type RunEvidence = {
+  runId: string
+  stopsCount: number
+  distanceMetric: string | null
+}
+
 // Metric card data for the Operations Overview page.
 const metrics: Metric[] = [
   { label: 'Vehicles Used', value: '2', unit: '/4', detail: 'of fleet deployed', emphasis: '50%', Icon: Truck, status: 'neutral' },
@@ -89,7 +95,7 @@ type SettingsModalProps = {
   onClose: () => void
 }
 
-function ApplicationHeader() {
+function ApplicationHeader({ onOpenSettings }: { onOpenSettings: () => void }) {
   return (
     <header className="topbar">
       <a className="brand" href="#overview" aria-label="Quasar home">
@@ -103,9 +109,9 @@ function ApplicationHeader() {
         <span>QUASAR</span>
       </a>
       <div className="topbar-meta">
-        <span className="system-status">Connected</span>
-        <span>Tuesday, 14 May</span>
-        <button className="avatar" aria-label="Open profile">AK</button>
+        <button type="button" className="settings-button header-settings" onClick={onOpenSettings}>
+          <Settings size={15} /> Settings
+        </button>
       </div>
     </header>
   )
@@ -241,6 +247,7 @@ function App() {
   const [changeAddressOpen, setChangeAddressOpen] = useState(false)
   const [addNewOrderOpen, setAddNewOrderOpen] = useState(false)
   const [comparisonRows, setComparisonRows] = useState<ComparisonRow[]>([])
+  const [runEvidence, setRunEvidence] = useState<RunEvidence | null>(null)
   const [quantumJobs, setQuantumJobs] = useState<QuantumJob[]>([])
   const [optimizeError, setOptimizeError] = useState<string | null>(null)
 
@@ -347,6 +354,8 @@ function App() {
             status: string
             qpu_time_seconds?: number | null
           }>
+          stops_count: number
+          distance_metric?: string | null
         }
         if (statusBody.status === 'FAILED') {
           throw new Error(statusBody.error_message || 'Optimization failed')
@@ -367,6 +376,11 @@ function App() {
             status: job.status,
             qpuTimeSeconds: job.qpu_time_seconds ?? null,
           })))
+          setRunEvidence({
+            runId,
+            stopsCount: statusBody.stops_count,
+            distanceMetric: statusBody.distance_metric ?? null,
+          })
           completed = true
           break
         }
@@ -378,6 +392,7 @@ function App() {
     } catch (error) {
       setComparisonRows([])
       setQuantumJobs([])
+      setRunEvidence(null)
       setOptimizeError(error instanceof Error ? `${error.message}. No benchmark result was created.` : 'Optimization unavailable. No benchmark result was created.')
     } finally {
       setIsOptimizing(false)
@@ -473,7 +488,7 @@ function App() {
 
   return (
     <main className={`app theme-${theme} font-${fontScale}`}>
-      <ApplicationHeader />
+      <ApplicationHeader onOpenSettings={() => setSettingsOpen(true)} />
 
       <div className="screen-transition" key={currentScreen}>
       {currentScreen === 'overview' && (
@@ -584,7 +599,6 @@ function App() {
           solverId={solverId}
           onSolverChange={setSolverId}
           onBack={() => setCurrentScreen('overview')}
-          onOpenSettings={() => setSettingsOpen(true)}
           onRunOptimization={() => { void runOptimization() }}
           optimizeError={optimizeError}
           onAddDeliveryPoint={addPlannerDeliveryPoint}
@@ -606,6 +620,7 @@ function App() {
           solverLabel={selectedSolver.label}
           comparisonRows={comparisonRows}
           quantumJobs={quantumJobs}
+          runEvidence={runEvidence}
           optimizeError={optimizeError}
         />
       )}
@@ -627,6 +642,7 @@ function App() {
         <BenchmarkAnalysis
           rows={comparisonRows}
           quantumJobs={quantumJobs}
+          runEvidence={runEvidence}
           onBack={() => setCurrentScreen('overview')}
         />
       )}
@@ -653,6 +669,7 @@ function App() {
           onClose={() => setRoutingDetailsOpen(false)}
           solverLabel={selectedSolver.label}
           comparisonRows={comparisonRows}
+          runEvidence={runEvidence}
         />
       )}
       {changeAddressOpen && <ChangeAddressModal onClose={() => setChangeAddressOpen(false)} onUpdate={updateAffectedAddress} />}

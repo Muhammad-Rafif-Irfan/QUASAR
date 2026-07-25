@@ -286,6 +286,12 @@ def run_optimization_pipeline(
         db.commit()
 
         dist_matrix, G, nodes = calculate_distance_matrix(depot, stops)
+        run.distance_metric = (
+            "OSM road-network distance"
+            if G is not None
+            else "Haversine great-circle fallback (OSM road graph unavailable)"
+        )
+        db.commit()
         points = [depot] + stops
         n = len(points)
 

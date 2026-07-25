@@ -1,5 +1,6 @@
 import LiveMap from './LiveMap'
 import type { MapLocation, TruckRoute } from './useRouteSimulation'
+import type { RunEvidence } from './App'
 
 export type ComparisonRow = {
   algorithm: string
@@ -30,6 +31,7 @@ type InitialRoutingResultsProps = {
   comparisonRows: ComparisonRow[]
   quantumJobs: QuantumJob[]
   optimizeError: string | null
+  runEvidence: RunEvidence | null
 }
 
 function InitialRoutingResults({
@@ -45,6 +47,7 @@ function InitialRoutingResults({
   comparisonRows,
   quantumJobs,
   optimizeError,
+  runEvidence,
 }: InitialRoutingResultsProps) {
   const allSolversMatch = comparisonRows.length > 1 && new Set(
     comparisonRows.map((row) => Math.round(row.distanceMeters)),
@@ -72,6 +75,9 @@ function InitialRoutingResults({
               <h2>Algorithm comparison</h2>
             </div>
           </div>
+          <p className="benchmark-provenance">
+            Run <code>{runEvidence?.runId ?? 'unavailable'}</code> · {runEvidence?.distanceMetric ?? 'distance basis unavailable'}
+          </p>
           <div className="comparison-table" role="table">
             <div className="comparison-head" role="row">
               <span>Algorithm</span>
@@ -134,7 +140,7 @@ function InitialRoutingResults({
             </span>
             <span className="route-stat">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-              {(totalDistance / 1000).toFixed(1)} km total
+              Map preview: {(totalDistance / 1000).toFixed(1)} km
             </span>
             {truckRoutes.map((route) => (
               <span className="route-stat route-stat--legend" key={route.truckId}>
@@ -143,6 +149,7 @@ function InitialRoutingResults({
               </span>
             ))}
           </div>
+          <p className="data-provenance">The map preview requests road geometry separately for display. The solver objective above is the only distance used to rank algorithms.</p>
           <LiveMap
             depot={depot}
             stops={stops}

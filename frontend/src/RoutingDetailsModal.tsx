@@ -1,13 +1,15 @@
 import { CheckCircle2, X } from 'lucide-react'
 import type { ComparisonRow } from './InitialRoutingResults'
+import type { RunEvidence } from './App'
 
 type RoutingDetailsModalProps = {
   onClose: () => void
   solverLabel: string
   comparisonRows: ComparisonRow[]
+  runEvidence: RunEvidence | null
 }
 
-function RoutingDetailsModal({ onClose, solverLabel, comparisonRows }: RoutingDetailsModalProps) {
+function RoutingDetailsModal({ onClose, solverLabel, comparisonRows, runEvidence }: RoutingDetailsModalProps) {
   const best = [...comparisonRows].sort((a, b) => a.distanceMeters - b.distanceMeters)[0]
   const details: Array<[string, string]> = [
     ['Selected mode', solverLabel],
@@ -29,6 +31,7 @@ function RoutingDetailsModal({ onClose, solverLabel, comparisonRows }: RoutingDe
         </header>
 
         <p className="routing-details-copy">Execution evidence for the latest algorithm comparison.</p>
+        <p className="benchmark-provenance">Run <code>{runEvidence?.runId ?? 'unavailable'}</code> · {runEvidence?.distanceMetric ?? 'distance basis unavailable'}</p>
         <div className="routing-details-grid">
           {details.map(([label, value]) => (
             <div key={label}>
