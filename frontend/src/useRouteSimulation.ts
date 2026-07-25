@@ -24,6 +24,15 @@ export type TruckRoute = {
   roadDistance: number
 }
 
+export type DemoPresetId = 'quantum-3' | 'city-5' | 'fleet-8'
+
+type DemoPreset = {
+  id: DemoPresetId
+  label: string
+  detail: string
+  stops: Array<MapLocation & { weight: string; startTime: string; endTime: string }>
+}
+
 export const DEPOT: MapLocation = {
   id: 'depot',
   name: 'Pleiku Stadium (demo depot)',
@@ -35,10 +44,52 @@ export const DEPOT: MapLocation = {
  * Real OSM geography, but synthetic delivery demand. Source object IDs and
  * licensing are recorded in docs/demo_data/pleiku_quantum_demo.json.
  */
-const DEMO_COORDS: Record<string, { name: string; lat: number; lon: number }> = {
-  N1: { name: 'Pleiku Airport', lat: 14.0044240, lon: 108.0135476 },
-  N2: { name: 'Biển Hồ Pleiku', lat: 14.0468591, lon: 107.9960066 },
-  N3: { name: 'Chùa Minh Đạo, Diên Phú', lat: 13.9569300, lon: 107.9828185 },
+const DEMO_PRESETS: DemoPreset[] = [
+  {
+    id: 'quantum-3',
+    label: '3 stops · QAOA smoke test',
+    detail: 'Small, auditable instance for the verified QAOA flow.',
+    stops: [
+      { id: 'N1', name: 'Pleiku Airport', lat: 14.0044240, lon: 108.0135476, weight: '12', startTime: '09:00', endTime: '10:00' },
+      { id: 'N2', name: 'Biển Hồ Pleiku', lat: 14.0468591, lon: 107.9960066, weight: '38', startTime: '09:00', endTime: '10:00' },
+      { id: 'N3', name: 'Chùa Minh Đạo, Diên Phú', lat: 13.9569300, lon: 107.9828185, weight: '24', startTime: '10:00', endTime: '11:00' },
+    ],
+  },
+  {
+    id: 'city-5',
+    label: '5 stops · city demo',
+    detail: 'Classical routing comparison across a compact Pleiku delivery area.',
+    stops: [
+      { id: 'N1', name: 'Pleiku Airport', lat: 14.0044240, lon: 108.0135476, weight: '12', startTime: '09:00', endTime: '10:00' },
+      { id: 'N2', name: 'Biển Hồ Pleiku', lat: 14.0468591, lon: 107.9960066, weight: '38', startTime: '09:00', endTime: '10:00' },
+      { id: 'N3', name: 'Chùa Minh Đạo, Diên Phú', lat: 13.9569300, lon: 107.9828185, weight: '24', startTime: '10:00', endTime: '11:00' },
+      { id: 'N4', name: 'Đại học Nông Lâm TP. Hồ Chí Minh – Gia Lai', lat: 13.9692560, lon: 108.0200740, weight: '18', startTime: '10:00', endTime: '12:00' },
+      { id: 'N5', name: 'Quảng trường Đại Đoàn Kết', lat: 13.9786630, lon: 108.0103610, weight: '28', startTime: '11:00', endTime: '12:00' },
+    ],
+  },
+  {
+    id: 'fleet-8',
+    label: '8 stops · fleet demo',
+    detail: 'A fuller multi-vehicle story for the six-minute presentation.',
+    stops: [
+      { id: 'N1', name: 'Pleiku Airport', lat: 14.0044240, lon: 108.0135476, weight: '12', startTime: '09:00', endTime: '10:00' },
+      { id: 'N2', name: 'Biển Hồ Pleiku', lat: 14.0468591, lon: 107.9960066, weight: '38', startTime: '09:00', endTime: '10:00' },
+      { id: 'N3', name: 'Chùa Minh Đạo, Diên Phú', lat: 13.9569300, lon: 107.9828185, weight: '24', startTime: '10:00', endTime: '11:00' },
+      { id: 'N4', name: 'Đại học Nông Lâm TP. Hồ Chí Minh – Gia Lai', lat: 13.9692560, lon: 108.0200740, weight: '18', startTime: '10:00', endTime: '12:00' },
+      { id: 'N5', name: 'Quảng trường Đại Đoàn Kết', lat: 13.9786630, lon: 108.0103610, weight: '28', startTime: '11:00', endTime: '12:00' },
+      { id: 'N6', name: 'Bệnh viện Đại học Y Dược Hoàng Anh Gia Lai', lat: 13.9823900, lon: 108.0007150, weight: '16', startTime: '11:00', endTime: '13:00' },
+      { id: 'N7', name: 'Chợ Pleiku', lat: 13.9820590, lon: 108.0034030, weight: '22', startTime: '12:00', endTime: '14:00' },
+      { id: 'N8', name: 'Công viên Diên Hồng', lat: 13.9739680, lon: 108.0054850, weight: '14', startTime: '12:00', endTime: '14:00' },
+    ],
+  },
+]
+
+export const demoPresets = DEMO_PRESETS.map(({ id, label, detail, stops }) => ({ id, label, detail, stopCount: stops.length }))
+
+export function getDemoPreset(id: DemoPresetId): DemoPreset {
+  const preset = DEMO_PRESETS.find((candidate) => candidate.id === id)
+  if (!preset) throw new Error(`Unknown demo preset: ${id}`)
+  return preset
 }
 
 /** Extra location pool for dynamically added orders. */
@@ -133,13 +184,13 @@ async function fetchRoadRoute(waypoints: MapLocation[]): Promise<{ geometry: [nu
 // ─── Main hook ────────────────────────────────────────────────────────
 export function useRouteSimulation() {
   const [stops, setStops] = useState<MapLocation[]>(() => {
-    return Object.entries(DEMO_COORDS).map(([id, coord]) => ({
-      id,
-      name: coord.name,
-      lat: coord.lat,
-      lon: coord.lon,
-    }))
+    return getDemoPreset('quantum-3').stops.map(({ weight: _weight, startTime: _startTime, endTime: _endTime, ...stop }) => stop)
   })
+
+  /** Replace the complete delivery set atomically when a demo preset is selected. */
+  const replaceStops = useCallback((nextStops: MapLocation[]) => {
+    setStops(nextStops.map((stop) => ({ ...stop })))
+  }, [])
 
   /** Add a new stop at a specific lat/lon (e.g. user clicked the map). */
   const addStop = useCallback((lat: number, lon: number, label?: string) => {
@@ -283,5 +334,6 @@ export function useRouteSimulation() {
     addStopAuto,
     renameStop,
     removeStop,
+    replaceStops,
   }
 }

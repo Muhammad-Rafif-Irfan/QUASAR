@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { ArrowLeft, PackageCheck, Plus, Settings, Trash2, Truck, Upload } from 'lucide-react'
 import { SOLVER_OPTIONS, getSolverOption } from './solvers'
+import { demoPresets, type DemoPresetId } from './useRouteSimulation'
 
 export type Order = {
   id: string
@@ -31,6 +32,7 @@ type RoutePlannerProps = {
   onAddDeliveryPoint: () => void
   onRemoveDeliveryPoint: (id: string) => void
   onRenameDeliveryPoint: (id: string, name: string) => void
+  onApplyDemoPreset: (id: DemoPresetId) => void
 }
 
 export const initialOrders: Order[] = [
@@ -59,6 +61,7 @@ function RoutePlanner({
   onAddDeliveryPoint,
   onRemoveDeliveryPoint,
   onRenameDeliveryPoint,
+  onApplyDemoPreset,
 }: RoutePlannerProps) {
   const totalDemand = orders.reduce((total, order) => total + (Number(order.weight) || 0), 0)
   const totalCapacity = vehicles.reduce((total, vehicle) => total + (Number(vehicle.capacity) || 0), 0)
@@ -178,6 +181,21 @@ function RoutePlanner({
               <button type="button" className="settings-button"><Upload size={15} /> Import vehicle CSV</button>
             </div>
           </article>
+        </section>
+
+        <section className="planner-presets panel" aria-labelledby="demo-preset-title">
+          <div>
+            <p className="section-label">Demo-ready data</p>
+            <h2 id="demo-preset-title">Load a route scenario</h2>
+            <p>Uses the bundled Pleiku geography; it replaces the current delivery points and fleet setup.</p>
+          </div>
+          <div className="planner-preset-actions">
+            {demoPresets.map((preset) => (
+              <button type="button" className="settings-button" key={preset.id} onClick={() => onApplyDemoPreset(preset.id)} disabled={isOptimizing}>
+                <strong>{preset.label}</strong><span>{preset.detail}</span>
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="planner-summary" aria-label="Route planning summary">

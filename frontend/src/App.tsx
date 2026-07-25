@@ -6,7 +6,7 @@ import LiveDeliveryAndRouting from './LiveDeliveryAndRouting'
 import RoutePlanner, { initialOrders, initialVehicles, type Order, type Vehicle } from './RoutePlanner'
 import RoutingDetailsModal from './RoutingDetailsModal'
 import { AddNewOrderModal, ChangeAddressModal, type NewOrderDraft } from './SupportingStates'
-import { useRouteSimulation } from './useRouteSimulation'
+import { getDemoPreset, useRouteSimulation, type DemoPresetId } from './useRouteSimulation'
 import {
   DEFAULT_SOLVER_ID,
   MAX_CLASSICAL_DEMO_STOPS,
@@ -253,6 +253,7 @@ function App() {
     addStopAuto,
     renameStop,
     removeStop,
+    replaceStops,
   } = useRouteSimulation()
   const [newStopIds, setNewStopIds] = useState<Set<string>>(new Set())
   const selectedSolver = getSolverOption(solverId)
@@ -396,6 +397,30 @@ function App() {
     ])
     addStopAuto(id)
   }, [addStopAuto, orders, stops.length])
+
+  const applyDemoPreset = useCallback((presetId: DemoPresetId) => {
+    const preset = getDemoPreset(presetId)
+    replaceStops(preset.stops.map(({ weight: _weight, startTime: _startTime, endTime: _endTime, ...stop }) => stop))
+    setOrders(preset.stops.map(({ id, name, weight, startTime, endTime }) => ({
+      id,
+      address: name,
+      weight,
+      startTime,
+      endTime,
+    })))
+    setVehicles(preset.stops.length <= 3
+      ? initialVehicles
+      : [
+          { id: 'truck-1', name: 'Truck 1', capacity: '80' },
+          { id: 'truck-2', name: 'Truck 2', capacity: '100' },
+          { id: 'truck-3', name: 'Truck 3', capacity: '120' },
+        ])
+    setNewStopIds(new Set())
+    setOptimizeError(null)
+    if (preset.stops.length > MAX_QAOA_STOPS && getSolverOption(solverId).algorithms.includes('qaoa')) {
+      setSolverId(DEFAULT_SOLVER_ID)
+    }
+  }, [replaceStops, solverId])
 
   const removePlannerDeliveryPoint = useCallback((id: string) => {
     removeStop(id)
@@ -565,6 +590,7 @@ function App() {
           onAddDeliveryPoint={addPlannerDeliveryPoint}
           onRemoveDeliveryPoint={removePlannerDeliveryPoint}
           onRenameDeliveryPoint={renameStop}
+          onApplyDemoPreset={applyDemoPreset}
         />
       )}
       {currentScreen === 'results' && (
