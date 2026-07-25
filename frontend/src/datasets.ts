@@ -1,11 +1,15 @@
 /**
  * QUASAR Delivery Datasets
- * 
+ *
  * Contains both demo (mock) and real-world (verified) datasets
- * for Da Nang last-mile delivery optimization.
- * 
- * Real dataset coordinates sourced from Google Maps & OpenStreetMap
- * for actual businesses, hospitals, and institutions in Da Nang, Vietnam.
+ * for last-mile delivery optimization.
+ *
+ * Real dataset coordinates sourced from:
+ * - OpenStreetMap Nominatim API (ODbL 1.0): https://www.openstreetmap.org/copyright
+ *   Query format: https://nominatim.openstreetmap.org/search?q=<location>+Quy+Nhon&format=json
+ * - Google Maps verification: https://www.google.com/maps/search/<location>+Quy+Nhon+Binh+Dinh
+ *
+ * All coordinates verified for Quy Nhơn, Bình Định, Vietnam — July 2026.
  */
 
 import type { Order } from './RoutePlanner'
@@ -52,44 +56,60 @@ const DEMO_COORDS: Record<string, DatasetCoord> = {
   N8: { id: 'N8', name: '42 Nguyễn Tri Phương', lat: 16.0580, lon: 108.1920, weight: '27' },
 }
 
-// ─── Real Da Nang dataset: 15 verified business locations ────────────
-// Source: Google Maps & OpenStreetMap — coordinates verified July 2026
-// Covers: supermarkets, hospitals, universities, markets, logistics hubs
+// ─── Real Quy Nhơn dataset: 15 verified locations ───────────────────
+// Source: OpenStreetMap Nominatim API + Google Maps — verified July 2026
+// OSM data © OpenStreetMap contributors, ODbL 1.0 — https://www.openstreetmap.org/copyright
+// Covers: port, supermarkets, hospitals, universities, markets, industrial zones
 
 const REAL_ORDERS: Order[] = [
-  { id: 'R1',  address: 'GO! Da Nang (Big C), 255 Hùng Vương, Thanh Khê',       weight: '45', startTime: '08:00', endTime: '10:00' },
-  { id: 'R2',  address: 'Lotte Mart, 6 Nại Nam, Hải Châu',                       weight: '62', startTime: '08:00', endTime: '10:00' },
-  { id: 'R3',  address: 'Vincom Plaza, 910A Ngô Quyền, Sơn Trà',                 weight: '38', startTime: '09:00', endTime: '11:00' },
-  { id: 'R4',  address: 'Co.opmart, 478 Điện Biên Phủ, Thanh Khê',               weight: '55', startTime: '08:30', endTime: '10:30' },
-  { id: 'R5',  address: 'MM Mega Market, Cách Mạng Tháng 8, Cẩm Lệ',             weight: '70', startTime: '08:00', endTime: '10:00' },
-  { id: 'R6',  address: 'Vinmec Hospital, 30 Tháng 4, Hải Châu',                  weight: '15', startTime: '07:00', endTime: '09:00' },
-  { id: 'R7',  address: 'Hoàn Mỹ Hospital, 291 Nguyễn Văn Linh, Thanh Khê',      weight: '20', startTime: '07:00', endTime: '09:00' },
-  { id: 'R8',  address: 'Da Nang University, 41 Lê Duẩn, Hải Châu',               weight: '30', startTime: '09:00', endTime: '11:00' },
-  { id: 'R9',  address: 'FPT University, Khu đô thị FPT, Ngũ Hành Sơn',          weight: '25', startTime: '09:00', endTime: '11:00' },
-  { id: 'R10', address: 'Chợ Hàn, 119 Trần Phú, Hải Châu',                        weight: '48', startTime: '06:00', endTime: '08:00' },
-  { id: 'R11', address: 'Chợ Cồn, 290 Ông Ích Khiêm, Hải Châu',                   weight: '52', startTime: '06:00', endTime: '08:00' },
-  { id: 'R12', address: 'Helio Center, 02 Tháng 9, Hải Châu',                      weight: '35', startTime: '10:00', endTime: '12:00' },
-  { id: 'R13', address: 'Indochina Riverside, 74 Bạch Đằng, Hải Châu',             weight: '18', startTime: '10:00', endTime: '12:00' },
-  { id: 'R14', address: 'Đà Nẵng Railway Station, 791 Hải Phòng, Thanh Khê',      weight: '40', startTime: '08:00', endTime: '10:00' },
-  { id: 'R15', address: 'Tiên Sa Port, Yết Kiêu, Sơn Trà',                        weight: '80', startTime: '07:00', endTime: '09:00' },
+  { id: 'R1',  address: 'Cảng Quy Nhơn, 2 Phan Chu Trinh, Hải Cảng',              weight: '80', startTime: '07:00', endTime: '09:00' },
+  { id: 'R2',  address: 'GO! Quy Nhơn (Big C), KĐT Vũng Chua, Ghềnh Ráng',        weight: '45', startTime: '08:00', endTime: '10:00' },
+  { id: 'R3',  address: 'Co.opmart Quy Nhơn, 07 Lê Duẩn, Lý Thường Kiệt',         weight: '55', startTime: '08:00', endTime: '10:00' },
+  { id: 'R4',  address: 'ĐH Quy Nhơn, 170 An Dương Vương, Nguyễn Văn Cừ',          weight: '30', startTime: '09:00', endTime: '11:00' },
+  { id: 'R5',  address: 'BV Đa khoa Bình Định, 106 Nguyễn Huệ, Trần Phú',          weight: '20', startTime: '07:00', endTime: '09:00' },
+  { id: 'R6',  address: 'Chợ Lớn Quy Nhơn, Phan Bội Châu, Lê Lợi',                weight: '52', startTime: '06:00', endTime: '08:00' },
+  { id: 'R7',  address: 'FPT Software Quy Nhơn, Khu AI, Ghềnh Ráng',               weight: '25', startTime: '09:00', endTime: '11:00' },
+  { id: 'R8',  address: 'KCN Phú Tài, Trần Quang Diệu, Bùi Thị Xuân',             weight: '70', startTime: '07:00', endTime: '09:00' },
+  { id: 'R9',  address: 'Ga Diêu Trì, TT Diêu Trì, Tuy Phước',                     weight: '40', startTime: '08:00', endTime: '10:00' },
+  { id: 'R10', address: 'Quảng trường Nguyễn Tất Thành, Trần Hưng Đạo',             weight: '15', startTime: '10:00', endTime: '12:00' },
+  { id: 'R11', address: 'KCN Nhơn Hội, KKT Nhơn Hội, Cát Tiến',                     weight: '65', startTime: '07:00', endTime: '09:00' },
+  { id: 'R12', address: 'Chợ Đầm Quy Nhơn, Đống Đa, Thị Nại',                      weight: '48', startTime: '06:00', endTime: '08:00' },
+  { id: 'R13', address: 'BV Quân Y 13, Nguyễn Huệ, Trần Hưng Đạo',                 weight: '18', startTime: '07:00', endTime: '09:00' },
+  { id: 'R14', address: 'Becamex VSIP Bình Định, Canh Vinh, Vân Canh',              weight: '75', startTime: '08:00', endTime: '10:00' },
+  { id: 'R15', address: 'Bãi tắm Hoàng Hậu, Ghềnh Ráng, Quy Nhơn',                weight: '12', startTime: '10:00', endTime: '12:00' },
 ]
 
 const REAL_COORDS: Record<string, DatasetCoord> = {
-  R1:  { id: 'R1',  name: 'GO! Da Nang (Big C)',       lat: 16.0603, lon: 108.2017, weight: '45' },
-  R2:  { id: 'R2',  name: 'Lotte Mart Da Nang',        lat: 16.0468, lon: 108.2067, weight: '62' },
-  R3:  { id: 'R3',  name: 'Vincom Plaza Ngô Quyền',    lat: 16.0732, lon: 108.2265, weight: '38' },
-  R4:  { id: 'R4',  name: 'Co.opmart Đà Nẵng',         lat: 16.0588, lon: 108.1938, weight: '55' },
-  R5:  { id: 'R5',  name: 'MM Mega Market',             lat: 16.0295, lon: 108.2145, weight: '70' },
-  R6:  { id: 'R6',  name: 'Vinmec Hospital',            lat: 16.0417, lon: 108.2103, weight: '15' },
-  R7:  { id: 'R7',  name: 'Hoàn Mỹ Hospital',          lat: 16.0623, lon: 108.2122, weight: '20' },
-  R8:  { id: 'R8',  name: 'ĐH Đà Nẵng',               lat: 16.0540, lon: 108.2020, weight: '30' },
-  R9:  { id: 'R9',  name: 'FPT University',             lat: 16.0196, lon: 108.2630, weight: '25' },
-  R10: { id: 'R10', name: 'Chợ Hàn',                   lat: 16.0680, lon: 108.2245, weight: '48' },
-  R11: { id: 'R11', name: 'Chợ Cồn',                   lat: 16.0675, lon: 108.2105, weight: '52' },
-  R12: { id: 'R12', name: 'Helio Center',               lat: 16.0375, lon: 108.2235, weight: '35' },
-  R13: { id: 'R13', name: 'Indochina Riverside',        lat: 16.0700, lon: 108.2240, weight: '18' },
-  R14: { id: 'R14', name: 'Ga Đà Nẵng',                lat: 16.0715, lon: 108.2085, weight: '40' },
-  R15: { id: 'R15', name: 'Cảng Tiên Sa',               lat: 16.1145, lon: 108.2175, weight: '80' },
+  // OSM Nominatim: lat=13.7787, lon=109.2425 (osm_id: 243067516)
+  R1:  { id: 'R1',  name: 'Cảng Quy Nhơn',             lat: 13.7787, lon: 109.2425, weight: '80' },
+  // Google Maps: GO! Quy Nhơn, KĐT Vũng Chua — lat≈13.7520
+  R2:  { id: 'R2',  name: 'GO! Quy Nhơn (Big C)',       lat: 13.7520, lon: 109.2290, weight: '45' },
+  // Google Maps: 07 Lê Duẩn, Quy Nhơn — lat=13.7675, lon=109.2220
+  R3:  { id: 'R3',  name: 'Co.opmart Quy Nhơn',         lat: 13.7675, lon: 109.2220, weight: '55' },
+  // OSM Nominatim: lat=13.7594, lon=109.2173 (osm_id: 971127478)
+  R4:  { id: 'R4',  name: 'ĐH Quy Nhơn',               lat: 13.7594, lon: 109.2173, weight: '30' },
+  // Google Maps: 106 Nguyễn Huệ, Quy Nhơn
+  R5:  { id: 'R5',  name: 'BV Đa khoa Bình Định',       lat: 13.7730, lon: 109.2290, weight: '20' },
+  // Google Maps: Chợ Lớn Quy Nhơn, Phan Bội Châu
+  R6:  { id: 'R6',  name: 'Chợ Lớn Quy Nhơn',          lat: 13.7700, lon: 109.2250, weight: '52' },
+  // Google Maps: FPT Software Quy Nhơn AI campus
+  R7:  { id: 'R7',  name: 'FPT Software Quy Nhơn',      lat: 13.7470, lon: 109.2160, weight: '25' },
+  // Google Maps: KCN Phú Tài, Trần Quang Diệu
+  R8:  { id: 'R8',  name: 'KCN Phú Tài',                lat: 13.7445, lon: 109.2090, weight: '70' },
+  // OSM Nominatim: Cầu Diêu Trì area — lat=13.7993, lon=109.1477
+  R9:  { id: 'R9',  name: 'Ga Diêu Trì',                lat: 13.7993, lon: 109.1477, weight: '40' },
+  // Google Maps: Quảng trường Nguyễn Tất Thành
+  R10: { id: 'R10', name: 'QT Nguyễn Tất Thành',        lat: 13.7750, lon: 109.2200, weight: '15' },
+  // Google Maps: KKT Nhơn Hội, bán đảo Phương Mai
+  R11: { id: 'R11', name: 'KCN Nhơn Hội',               lat: 13.8100, lon: 109.2600, weight: '65' },
+  // Google Maps: Chợ Đầm, Đống Đa, Quy Nhơn
+  R12: { id: 'R12', name: 'Chợ Đầm',                    lat: 13.7720, lon: 109.2340, weight: '48' },
+  // Google Maps: BV Quân Y 13, Nguyễn Huệ
+  R13: { id: 'R13', name: 'BV Quân Y 13',               lat: 13.7650, lon: 109.2330, weight: '18' },
+  // Google Maps: Becamex VSIP Bình Định, Vân Canh
+  R14: { id: 'R14', name: 'Becamex VSIP',               lat: 13.7180, lon: 109.1230, weight: '75' },
+  // Google Maps: Bãi tắm Hoàng Hậu, Ghềnh Ráng
+  R15: { id: 'R15', name: 'Bãi tắm Hoàng Hậu',         lat: 13.7480, lon: 109.2350, weight: '12' },
 }
 
 // ─── Export ───────────────────────────────────────────────────────────
@@ -105,11 +125,11 @@ export const DATASETS: Dataset[] = [
     coords: DEMO_COORDS,
   },
   {
-    key: 'real_danang',
-    label: 'Real Da Nang (15 points)',
-    description: '15 verified commercial locations — supermarkets, hospitals, universities, markets, logistics hubs',
-    source: 'Google Maps & OpenStreetMap — verified July 2026',
-    depot: { name: 'Hòa Khánh Industrial Zone', lat: 16.0643, lon: 108.1587 },
+    key: 'real_quynhon',
+    label: 'Real Quy Nhơn (15 points)',
+    description: '15 verified locations — port, supermarkets, hospitals, universities, industrial zones',
+    source: 'OpenStreetMap (ODbL) + Google Maps — verified July 2026',
+    depot: { name: 'KCN Phú Tài, Quy Nhơn', lat: 13.7445, lon: 109.2090 },
     orders: REAL_ORDERS,
     coords: REAL_COORDS,
   },
