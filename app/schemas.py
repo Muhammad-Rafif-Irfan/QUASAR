@@ -58,3 +58,48 @@ class RunStatusResponse(BaseModel):
     class Config:
         orm_mode = True
         from_attributes = True
+
+
+# ── Benchmark Suite Schemas ──────────────────────────────────────────────
+
+class AlgorithmResult(BaseModel):
+    """Result for a single algorithm at a given problem size."""
+    distance_meters: float
+    execution_time_ms: float
+    tour: List[int]
+    is_valid: bool
+    approximation_ratio: float = 1.0
+
+
+class BenchmarkEntry(BaseModel):
+    """Comparison entry for one problem size N."""
+    n: int
+    or_tools: AlgorithmResult
+    qaoa: AlgorithmResult
+    qai_hobo: AlgorithmResult
+
+
+class SDGImpactMetrics(BaseModel):
+    """UN SDG 11 — Sustainable Cities impact metrics."""
+    total_km_naive: float
+    total_km_optimized: float
+    km_saved: float
+    km_saved_pct: float
+    co2_saved_kg: float
+    fuel_saved_liters: float
+    deliveries_optimized: int
+
+
+class BenchmarkSuiteResponse(BaseModel):
+    """Full benchmark suite result returned to the frontend."""
+    id: str
+    status: str
+    backend_name: str
+    created_at: datetime
+    entries: List[BenchmarkEntry] = []
+    sdg_metrics: Optional[SDGImpactMetrics] = None
+    honest_assessment: str = ""
+
+    class Config:
+        orm_mode = True
+        from_attributes = True

@@ -51,3 +51,17 @@ class BenchmarkResult(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     run = relationship("BenchmarkRun", back_populates="results")
+
+
+class BenchmarkSuite(Base):
+    __tablename__ = "benchmark_suites"
+
+    id = Column(String, primary_key=True, index=True)
+    status = Column(String, default="PENDING")  # PENDING, RUNNING, COMPLETED, FAILED
+    backend_name = Column(String, default="Local Statevector Simulator")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    entries_json = Column(Text, nullable=True)  # JSON serialized list of BenchmarkEntry
+    sdg_metrics_json = Column(Text, nullable=True)  # JSON serialized SDGImpactMetrics
+    honest_assessment = Column(Text, nullable=True)
+    error_message = Column(String, nullable=True)

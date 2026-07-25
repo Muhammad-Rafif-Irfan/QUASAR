@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 from fastapi import FastAPI, BackgroundTasks, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import engine, get_db
 import app.models as models
 import app.schemas as schemas
-from app.services.quantum_driver import run_optimization_pipeline
+from app.services.quantum_driver import run_optimization_pipeline, run_benchmark_suite
 
 # Create database tables automatically
 models.Base.metadata.create_all(bind=engine)
@@ -21,6 +22,15 @@ app = FastAPI(
     title="QUASAR API",
     description="Quantum-Accelerated Supply-chain And Routing API",
     version="1.0.0"
+)
+
+# CORS — allow frontend dev server to call the API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Mount static maps folder to serve HTML maps
@@ -126,3 +136,73 @@ def get_run_status(run_id: str, db: Session = Depends(get_db)):
         results=results_schema,
         quantum_jobs=jobs_schema
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  BENCHMARK SUITE ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@app.post("/api/v1/benchmark", status_code=status.HTTP_202_ACCEPTED)
+def start_benchmark(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Launch a full benchmark suite comparing OR-Tools, QAOA, and QAI-HOBO across N=4→8."""
+    suite_id = str(uuid.uuid4())
+
+    suite = models.BenchmarkSuite(
+        id=suite_id,
+        status="PENDING",
+    )
+    db.add(suite)
+    db.commit()
+
+    background_tasks.add_task(run_benchmark_suite, suite_id=suite_id)
+
+    return {"suite_id": suite_id, "status": "PENDING", "message": "Benchmark suite started."}
+
+
+@app.get("/api/v1/benchmark/latest", status_code=status.HTTP_200_OK)
+def get_latest_benchmark(db: Session = Depends(get_db)):
+    """Return the most recent completed benchmark suite, or empty response if none exist."""
+    suite = (
+        db.query(models.BenchmarkSuite)
+        .filter(models.BenchmarkSuite.status == "COMPLETED")
+        .order_by(models.BenchmarkSuite.created_at.desc())
+        .first()
+    )
+    if not suite:
+        return {"id": None, "status": "NONE", "backend_name": None, "created_at": None, "entries": [], "sdg_metrics": None, "honest_assessment": ""}
+
+    entries = json.loads(suite.entries_json) if suite.entries_json else []
+    sdg_metrics = json.loads(suite.sdg_metrics_json) if suite.sdg_metrics_json else None
+
+    return {
+        "id": suite.id,
+        "status": suite.status,
+        "backend_name": suite.backend_name,
+        "created_at": suite.created_at.isoformat() if suite.created_at else None,
+        "entries": entries,
+        "sdg_metrics": sdg_metrics,
+        "honest_assessment": suite.honest_assessment or "",
+    }
+
+
+@app.get("/api/v1/benchmark/{suite_id}", status_code=status.HTTP_200_OK)
+def get_benchmark_status(suite_id: str, db: Session = Depends(get_db)):
+    """Poll benchmark suite status and results."""
+    suite = db.query(models.BenchmarkSuite).filter(models.BenchmarkSuite.id == suite_id).first()
+    if not suite:
+        raise HTTPException(status_code=404, detail="Benchmark suite not found.")
+
+    entries = json.loads(suite.entries_json) if suite.entries_json else []
+    sdg_metrics = json.loads(suite.sdg_metrics_json) if suite.sdg_metrics_json else None
+
+    return {
+        "id": suite.id,
+        "status": suite.status,
+        "backend_name": suite.backend_name,
+        "created_at": suite.created_at.isoformat() if suite.created_at else None,
+        "entries": entries,
+        "sdg_metrics": sdg_metrics,
+        "honest_assessment": suite.honest_assessment or "",
+        "error_message": suite.error_message,
+    }
