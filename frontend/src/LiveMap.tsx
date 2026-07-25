@@ -243,7 +243,7 @@ export default function LiveMap({
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
 
         <AutoFitBounds depot={depot} stops={stops} />
@@ -278,33 +278,43 @@ export default function LiveMap({
           </Marker>
         ))}
 
-        {/* Route polylines — use OSRM road geometry for realistic road-following paths */}
-        {truckRoutes.map((route) => (
-          <Polyline
-            key={route.truckId}
-            positions={
-              route.roadGeometry.length > 2
-                ? route.roadGeometry
-                : route.waypoints.map((wp) => [wp.lat, wp.lon] as [number, number])
-            }
-            pathOptions={{
-              color: route.color,
-              weight: 4,
-              opacity: 0.85,
-              dashArray: recalculating ? '10 6' : undefined,
-            }}
-          >
-            <Popup>
-              <strong>{route.truckName}</strong>
-              <br />
-              Capacity: {route.capacity}
-              <br />
-              Stops: {route.orderIds.join(', ')}
-              <br />
-              Distance: {(route.roadDistance / 1000).toFixed(1)} km
-            </Popup>
-          </Polyline>
-        ))}
+        {/* Route polylines — white border underneath for contrast on bright map */}
+        {truckRoutes.map((route) => {
+          const positions = route.roadGeometry.length > 2
+            ? route.roadGeometry
+            : route.waypoints.map((wp) => [wp.lat, wp.lon] as [number, number])
+          return (
+            <span key={route.truckId}>
+              {/* Border/shadow line */}
+              <Polyline
+                positions={positions}
+                pathOptions={{ color: '#ffffff', weight: 8, opacity: 0.6 }}
+              />
+              {/* Main colored route */}
+              <Polyline
+                positions={positions}
+                pathOptions={{
+                  color: route.color,
+                  weight: 5,
+                  opacity: 0.95,
+                  lineCap: 'round',
+                  lineJoin: 'round',
+                  dashArray: recalculating ? '10 6' : undefined,
+                }}
+              >
+                <Popup>
+                  <strong>{route.truckName}</strong>
+                  <br />
+                  Capacity: {route.capacity}
+                  <br />
+                  Stops: {route.orderIds.join(', ')}
+                  <br />
+                  Distance: {(route.roadDistance / 1000).toFixed(1)} km
+                </Popup>
+              </Polyline>
+            </span>
+          )
+        })}
 
         {/* Animated trucks */}
         <AnimatedTrucks routes={truckRoutes} isLive={isLive} />

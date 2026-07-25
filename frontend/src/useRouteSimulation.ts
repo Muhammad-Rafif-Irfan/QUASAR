@@ -196,9 +196,9 @@ export function useRouteSimulation(datasetKey: string = 'demo') {
     const truck3Stops = stops.slice(third * 2)
 
     const truckDefs = [
-      { id: 'truck-1', name: 'Truck 1', capacity: '80 kg', color: '#2563eb', stops: truck1Stops },
-      { id: 'truck-2', name: 'Truck 2', capacity: '100 kg', color: '#16a34a', stops: truck2Stops },
-      { id: 'truck-3', name: 'Truck 3', capacity: '60 kg', color: '#f59e0b', stops: truck3Stops },
+      { id: 'truck-1', name: 'Truck 1', capacity: '80 kg', color: '#4f46e5', stops: truck1Stops },
+      { id: 'truck-2', name: 'Truck 2', capacity: '100 kg', color: '#059669', stops: truck2Stops },
+      { id: 'truck-3', name: 'Truck 3', capacity: '60 kg', color: '#e11d48', stops: truck3Stops },
     ]
 
     const routes: { truckId: string; truckName: string; capacity: string; color: string; waypoints: MapLocation[]; orderIds: string[] }[] = []
