@@ -16,6 +16,10 @@ type LiveDeliveryProps = {
   runId: string | null
   onMapClick: (latlng: { lat: number; lon: number }) => void
   newStopIds: Set<string>
+  selectedTruckId: string | null
+  onSelectTruck: (truckId: string) => void
+  vehicleSolverLabel: string
+  quantumEvidenceLabel: string | null
 }
 
 // Screen 04 mirrors the approved live-routing wireframe with mock operational data.
@@ -33,6 +37,10 @@ function LiveDeliveryAndRouting({
   runId,
   onMapClick,
   newStopIds,
+  selectedTruckId,
+  onSelectTruck,
+  vehicleSolverLabel,
+  quantumEvidenceLabel,
 }: LiveDeliveryProps) {
   const routingOverview = [
     { label: 'Active vehicles', value: String(truckRoutes.length) },
@@ -72,12 +80,13 @@ function LiveDeliveryAndRouting({
             onMapClick={onMapClick}
             newStopIds={newStopIds}
             className="live-map-active"
+            highlightedTruckId={selectedTruckId}
           />
         </article>
 
         <div className="live-truck-list">
           {truckRoutes.map((route) => (
-            <article className="panel live-truck-card" key={route.truckId}>
+            <article className={`panel live-truck-card ${selectedTruckId === route.truckId ? 'is-selected' : ''}`} key={route.truckId}>
               <div className="live-truck-card__heading">
                 <div>
                   <Truck size={16} />
@@ -86,6 +95,7 @@ function LiveDeliveryAndRouting({
                 </div>
                 <span>{route.capacity}</span>
               </div>
+              <div className="live-truck-algorithm"><span>Route allocation</span><strong>{vehicleSolverLabel}</strong>{quantumEvidenceLabel && <small>{quantumEvidenceLabel}</small>}</div>
               <div className="live-truck-stops">
                 {route.waypoints
                   .filter((wp) => wp.id !== 'depot')
@@ -100,6 +110,7 @@ function LiveDeliveryAndRouting({
                     </div>
                   ))}
               </div>
+              <button type="button" className="settings-button live-truck-view" onClick={() => onSelectTruck(route.truckId)}>{selectedTruckId === route.truckId ? 'Viewing this route' : 'View this route'}</button>
             </article>
           ))}
         </div>

@@ -168,6 +168,18 @@ class RunStatusResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RunHistoryItem(BaseModel):
+    """Compact metadata for selecting a persisted benchmark run."""
+
+    run_id: str
+    stops_count: int
+    depot_name: str
+    distance_metric: Optional[str] = None
+    updated_at: datetime
+    results_count: int
+    quantum_jobs_count: int
+
+
 class InspectPipelineStage(BaseModel):
     step: int
     name: str

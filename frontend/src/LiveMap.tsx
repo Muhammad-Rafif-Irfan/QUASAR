@@ -194,6 +194,7 @@ type LiveMapProps = {
   /** Stops that were recently added — shown with a different icon */
   newStopIds?: Set<string>
   className?: string
+  highlightedTruckId?: string | null
 }
 
 export default function LiveMap({
@@ -204,6 +205,7 @@ export default function LiveMap({
   onMapClick,
   newStopIds,
   className = '',
+  highlightedTruckId = null,
 }: LiveMapProps) {
   const [recalculating, setRecalculating] = useState(false)
   const [addStopMode, setAddStopMode] = useState(false)
@@ -300,8 +302,8 @@ export default function LiveMap({
             }
             pathOptions={{
               color: route.color,
-              weight: 4,
-              opacity: 0.85,
+              weight: highlightedTruckId === route.truckId ? 6 : 4,
+              opacity: highlightedTruckId && highlightedTruckId !== route.truckId ? 0.22 : 0.9,
               dashArray: recalculating ? '10 6' : undefined,
             }}
           >

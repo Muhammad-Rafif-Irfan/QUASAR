@@ -385,6 +385,7 @@ def inspect_runtime(db: Session = Depends(get_db)):
             "POST /api/v1/quantum/warm-start",
             "POST /api/v1/optimize",
             "GET /api/v1/optimize/latest",
+            "GET /api/v1/optimize/history",
             "GET /api/v1/optimize/{run_id}",
             "DELETE /api/v1/app-data",
             "GET /docs",
@@ -510,6 +511,39 @@ def run_quantum_warm_start(
         ) from error
 
     return schemas.QuantumWarmStartResponse(result=result)
+
+
+@app.get(
+    "/api/v1/optimize/history",
+    response_model=list[schemas.RunHistoryItem],
+    status_code=status.HTTP_200_OK,
+)
+def get_completed_run_history(limit: int = 12, db: Session = Depends(get_db)):
+    """Return compact metadata for recent completed runs.
+
+    The per-run endpoint remains the source of full solver and quantum traces,
+    avoiding an unnecessarily large dashboard response.
+    """
+    safe_limit = max(1, min(limit, 50))
+    runs = (
+        db.query(models.BenchmarkRun)
+        .filter(models.BenchmarkRun.status == "COMPLETED")
+        .order_by(models.BenchmarkRun.updated_at.desc())
+        .limit(safe_limit)
+        .all()
+    )
+    return [
+        schemas.RunHistoryItem(
+            run_id=run.id,
+            stops_count=run.stops_count,
+            depot_name=run.depot_name,
+            distance_metric=run.distance_metric,
+            updated_at=run.updated_at,
+            results_count=len(run.results),
+            quantum_jobs_count=len(run.quantum_jobs),
+        )
+        for run in runs
+    ]
 
 
 @app.get(

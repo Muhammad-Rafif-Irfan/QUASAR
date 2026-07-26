@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, type FormEvent } from 'react'
-import { BarChart3, Map, Navigation, PackageCheck, Route, Settings, TriangleAlert, Truck, type LucideIcon } from 'lucide-react'
-import BenchmarkAnalysis from './BenchmarkAnalysis'
+import { BarChart3, CircleDollarSign, Clock3, Fuel, Map, Navigation, PackageCheck, Route, Settings, TriangleAlert, Truck, type LucideIcon } from 'lucide-react'
+import BenchmarkAnalysis, { type RunHistoryItem } from './BenchmarkAnalysis'
 import InitialRoutingResults, { type QuantumJob } from './InitialRoutingResults'
 import LiveDeliveryAndRouting from './LiveDeliveryAndRouting'
 import RoutePlanner, { WorkflowSidebar, initialOrders, initialVehicles, type Order, type Vehicle } from './RoutePlanner'
@@ -194,10 +194,10 @@ function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontSca
             <legend>Accessibility</legend>
             <label>
               Color mode
-              <select value={theme} onChange={(event) => onThemeChange(event.target.value as Theme)} aria-label="Color mode">
-                <option value="light">Light mode</option>
-                <option value="dark">Dark mode</option>
-              </select>
+              <span className="theme-toggle" role="group" aria-label="Color mode">
+                <button type="button" className={theme === 'light' ? 'is-selected' : ''} onClick={() => onThemeChange('light')} aria-pressed={theme === 'light'}>Light</button>
+                <button type="button" className={theme === 'dark' ? 'is-selected' : ''} onClick={() => onThemeChange('dark')} aria-pressed={theme === 'dark'}>Dark</button>
+              </span>
             </label>
             <label>
               Text size
@@ -291,6 +291,8 @@ function App() {
   const [changeAddressOpen, setChangeAddressOpen] = useState(false)
   const [addNewOrderOpen, setAddNewOrderOpen] = useState(false)
   const [comparisonRows, setComparisonRows] = useState<ComparisonRow[]>([])
+  const [runHistory, setRunHistory] = useState<RunHistoryItem[]>([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [runEvidence, setRunEvidence] = useState<RunEvidence | null>(null)
   const [quantumJobs, setQuantumJobs] = useState<QuantumJob[]>([])
   const [quantumWarmStart, setQuantumWarmStart] = useState<QuantumWarmStartEvidence | null>(null)
@@ -298,6 +300,7 @@ function App() {
   const [rerouteAfterStateChange, setRerouteAfterStateChange] = useState(false)
   const [pendingRestoredFleetRoutes, setPendingRestoredFleetRoutes] = useState<OptimizedFleetRoute[] | null>(null)
   const [isClearingAppData, setIsClearingAppData] = useState(false)
+  const [selectedTruckId, setSelectedTruckId] = useState<string | null>(null)
 
   const {
     depot,
@@ -315,6 +318,8 @@ function App() {
   const [newStopIds, setNewStopIds] = useState<Set<string>>(new Set())
   const selectedSolver = getSolverOption(solverId)
   const canOpenLive = runEvidence != null && !isOptimizing
+  const vehicleSolverLabel = truckRoutes.length > 1 ? 'OR-Tools CVRP allocation' : (runEvidence?.solverLabel || 'No verified solver')
+  const quantumEvidenceLabel = quantumWarmStart ? `${quantumWarmStart.algorithm} is evaluation evidence; it does not replace this vehicle allocation.` : null
   const bestDistanceMeters = comparisonRows.length ? Math.min(...comparisonRows.map((row) => row.distanceMeters)) : null
   const quantumEvidenceCount = quantumJobs.length + (quantumWarmStart?.jobIds.length || 0)
   const routePreviewDistances = truckRoutes.map((route) => ({
@@ -324,16 +329,54 @@ function App() {
     ), 0),
     color: route.color,
   }))
-  let cumulativePreviewDistance = 0
-  const cumulativeRoutePreviewPoints = routePreviewDistances.map((route, index) => {
-    cumulativePreviewDistance += route.meters
+  const previewDistanceMeters = routePreviewDistances.reduce((sum, route) => sum + route.meters, 0)
+  const orderWeightById = new globalThis.Map(orders.map((order) => [order.id, Number(order.weight) || 0]))
+  const fleetProfile = routePreviewDistances.map((route, index) => {
+    const truckRoute = truckRoutes[index]
+    const routeKm = route.meters / 1000
+    const load = (truckRoute?.orderIds || []).reduce((sum, orderId) => sum + (orderWeightById.get(orderId) || 0), 0)
+    // TruckRoute renders capacity as "load / capacity kg" for the live card;
+    // use the declared capacity segment, not Number("66 / 70 kg") which is NaN.
+    const capacity = Number((truckRoute?.capacity || '').split('/')[1]?.replace(/[^\d.]/g, '')) || 1
     return {
-      ...route,
-      cumulativeMeters: cumulativePreviewDistance,
-      x: routePreviewDistances.length === 1 ? 350 : 34 + (index * 632) / (routePreviewDistances.length - 1),
+      label: route.label,
+      distance: routeKm,
+      duration: (routeKm / 24) * 60 + (truckRoute?.orderIds.length || 0) * 5,
+      loadPercent: Math.min(100, load / capacity * 100),
     }
   })
-  const maxCumulativePreviewDistance = Math.max(...cumulativeRoutePreviewPoints.map((route) => route.cumulativeMeters), 1)
+  const isSolverComparison = comparisonRows.length >= 2
+  const chartLabels = isSolverComparison ? comparisonRows.map((row) => row.algorithm.replace(' (cost Hamiltonian)', '')) : fleetProfile.map((route) => route.label)
+  const normalizeToPercent = (values: number[], invert = false) => {
+    const maximum = Math.max(...values, 1)
+    return values.map((value) => invert ? Math.max(0, 100 - value / maximum * 100) : value / maximum * 100)
+  }
+  const chartSeries = isSolverComparison
+    ? [
+        { className: 'distance-series', label: 'Route quality (best = 100)', values: (() => { const best = Math.min(...comparisonRows.map((row) => row.distanceMeters)); return comparisonRows.map((row) => best / Math.max(row.distanceMeters, 1) * 100) })() },
+        { className: 'time-series', label: 'Runtime (fastest = 100)', values: normalizeToPercent(comparisonRows.map((row) => row.executionTimeMs), true) },
+        { className: 'cost-series', label: 'Valid route (yes = 100)', values: comparisonRows.map((row) => row.isValid ? 100 : 0) },
+      ]
+    : [
+        { className: 'distance-series', label: 'Route distance', values: normalizeToPercent(fleetProfile.map((route) => route.distance)) },
+        { className: 'time-series', label: 'Estimated duration', values: normalizeToPercent(fleetProfile.map((route) => route.duration)) },
+        { className: 'cost-series', label: 'Vehicle load', values: fleetProfile.map((route) => route.loadPercent) },
+      ]
+  const chartPoints = (values: number[]) => values.map((value, index) => ({
+    x: values.length === 1 ? 350 : 38 + (index * 624) / (values.length - 1),
+    y: 198 - value / 100 * 154,
+  }))
+  // Transparent operational estimates based on the map-preview distance. They
+  // are deliberately not labeled as savings because no baseline run is known.
+  const previewDistanceKm = previewDistanceMeters / 1000
+  const routeOperationsEstimate = runEvidence && previewDistanceKm > 0 ? {
+    distanceKm: previewDistanceKm,
+    drivingMinutes: Math.round((previewDistanceKm / 24) * 60),
+    totalMinutes: Math.round((previewDistanceKm / 24) * 60) + runEvidence.stopsCount * 5,
+    fuelLiters: previewDistanceKm * 0.09,
+    fuelCostVnd: previewDistanceKm * 0.09 * 24000,
+    fuelCostUsd: previewDistanceKm * 0.09 * 24000 / 25000,
+  } : null
   const overviewMetrics: Metric[] = [
     {
       label: 'Vehicles in latest run',
@@ -442,13 +485,63 @@ function App() {
     return () => { cancelled = true }
   }, [replaceStops])
 
-  // The verified quantum encoding is single-vehicle TSP. Keep fleet mode on
-  // the production OR-Tools CVRP solver instead of presenting a false QAOA run.
-  useEffect(() => {
-    if (vehicles.length > 1 && getSolverOption(solverId).algorithms.includes('qaoa')) {
-      setSolverId('or_tools')
+  const loadRunHistory = useCallback(async () => {
+    setIsLoadingHistory(true)
+    try {
+      const response = await fetch('/api/v1/optimize/history?limit=12')
+      if (!response.ok) throw new Error(`Run-history request failed (${response.status})`)
+      setRunHistory(await response.json() as RunHistoryItem[])
+    } catch {
+      // Keep the active benchmark usable if history is temporarily unavailable.
+      setRunHistory([])
+    } finally {
+      setIsLoadingHistory(false)
     }
-  }, [vehicles.length, solverId])
+  }, [])
+
+  useEffect(() => {
+    if (currentScreen === 'benchmark') void loadRunHistory()
+  }, [currentScreen, loadRunHistory])
+
+  const selectHistoricalRun = useCallback(async (runId: string) => {
+    try {
+      const response = await fetch(`/api/v1/optimize/${runId}`)
+      if (!response.ok) throw new Error(`Saved run could not be loaded (${response.status})`)
+      const run = await response.json() as {
+        run_id: string
+        stops_count: number
+        distance_metric?: string | null
+        results: Array<{ algorithm: string; distance_meters: number; execution_time_ms: number; is_valid: boolean; approximation_ratio?: number | null }>
+        quantum_jobs: Array<{ job_id: string; algorithm: string; backend_name: string; status: string; qpu_time_seconds?: number | null }>
+        fleet_routes?: OptimizedFleetRoute[]
+      }
+      setComparisonRows(run.results.map((row) => ({
+        algorithm: row.algorithm,
+        distanceMeters: row.distance_meters,
+        executionTimeMs: row.execution_time_ms,
+        isValid: row.is_valid,
+        approximationRatio: row.approximation_ratio ?? null,
+      })))
+      setQuantumJobs(run.quantum_jobs.map((job) => ({
+        jobId: job.job_id,
+        algorithm: job.algorithm,
+        backendName: job.backend_name,
+        status: job.status,
+        qpuTimeSeconds: job.qpu_time_seconds ?? null,
+      })))
+      setQuantumWarmStart(null)
+      setRunEvidence({
+        runId: run.run_id,
+        stopsCount: run.stops_count,
+        distanceMetric: run.distance_metric ?? null,
+        solverLabel: run.results.some((row) => /qaoa|quantum/i.test(row.algorithm)) ? 'Historical verified solver comparison' : run.results[0]?.algorithm || 'Historical verified run',
+        quantumRequested: run.quantum_jobs.length > 0,
+        vehiclesUsed: run.fleet_routes?.length || 1,
+      })
+    } catch (error) {
+      setOptimizeError(error instanceof Error ? error.message : 'Could not load the saved benchmark run.')
+    }
+  }, [])
 
   const handleStartRouting = () => {
     setCurrentScreen('planner')
@@ -638,6 +731,7 @@ function App() {
             quantumRequested: solver.algorithms.includes('qaoa') || solver.id === 'qaoa_plus_qudora',
             vehiclesUsed: (statusBody.fleet_routes || []).length || 1,
           })
+          void loadRunHistory()
           const fleetRoutes = statusBody.fleet_routes || []
           if (fleetRoutes.length > 0) {
             applyOptimizedFleetRoutes(fleetRoutes)
@@ -732,7 +826,7 @@ function App() {
     } finally {
       setIsOptimizing(false)
     }
-  }, [solverId, depot, stops, orders, vehicles, applyOptimizedFleetRoutes])
+  }, [solverId, depot, stops, orders, vehicles, applyOptimizedFleetRoutes, loadRunHistory])
 
   useEffect(() => {
     if (!rerouteAfterStateChange || isOptimizing) return
@@ -773,10 +867,7 @@ function App() {
         ])
     setNewStopIds(new Set())
     setOptimizeError(null)
-    if (preset.stops.length > MAX_QAOA_STOPS && getSolverOption(solverId).algorithms.includes('qaoa')) {
-      setSolverId('or_tools')
-    }
-  }, [replaceStops, solverId])
+  }, [replaceStops])
 
   const removePlannerDeliveryPoint = useCallback((id: string) => {
     removeStop(id)
@@ -872,25 +963,36 @@ function App() {
               <article className="panel history-chart-card">
                 <div className="panel-heading">
                   <div>
-                    <p className="section-label">Latest route geometry</p>
-                    <h2>Cumulative route preview by vehicle</h2>
+                    <p className="section-label">Latest route operations</p>
+                    <h2>{isSolverComparison ? 'Solver trade-off profile' : 'Fleet balance profile'}</h2>
                   </div>
                 </div>
                 {runEvidence && routePreviewDistances.length > 0 ? (
                   <>
-                    <div className="history-chart" role="img" aria-label="Cumulative map route-preview distance in vehicle dispatch order for the latest verified run">
-                      <svg viewBox="0 0 700 230" preserveAspectRatio="none" aria-hidden="true">
-                        <line x1="24" y1="30" x2="676" y2="30" />
-                        <line x1="24" y1="90" x2="676" y2="90" />
-                        <line x1="24" y1="150" x2="676" y2="150" />
-                        <line x1="24" y1="210" x2="676" y2="210" />
-                        {cumulativeRoutePreviewPoints.length === 1 && <line className="delivery-line" x1="84" y1={210 - (cumulativeRoutePreviewPoints[0].cumulativeMeters / maxCumulativePreviewDistance) * 160} x2="616" y2={210 - (cumulativeRoutePreviewPoints[0].cumulativeMeters / maxCumulativePreviewDistance) * 160} />}
-                        <polyline className="delivery-line" points={cumulativeRoutePreviewPoints.map((point) => `${point.x},${210 - (point.cumulativeMeters / maxCumulativePreviewDistance) * 160}`).join(' ')} />
-                        {cumulativeRoutePreviewPoints.map((point) => <circle className="delivery-point" cx={point.x} cy={210 - (point.cumulativeMeters / maxCumulativePreviewDistance) * 160} r="2.8" key={point.label} />)}
-                      </svg>
-                      <div className="chart-labels">{cumulativeRoutePreviewPoints.map((point) => <span key={point.label}>{point.label}</span>)}</div>
+                    <div className="route-estimate-grid" aria-label="Estimated route operations">
+                      <div><Map size={15} /><span>Map route preview</span><strong>{routeOperationsEstimate?.distanceKm.toFixed(1)} km</strong></div>
+                      <div><Clock3 size={15} /><span>Estimated duration</span><strong>{routeOperationsEstimate?.totalMinutes} min</strong><small>{routeOperationsEstimate?.drivingMinutes} min driving + stops</small></div>
+                      <div><Fuel size={15} /><span>Estimated fuel</span><strong>{routeOperationsEstimate?.fuelLiters.toFixed(1)} L</strong><small>at 9.0 L / 100 km</small></div>
+                      <div><CircleDollarSign size={15} /><span>Fuel-only cost</span><strong>{Math.round(routeOperationsEstimate?.fuelCostVnd || 0).toLocaleString('en-US')} VND · ${(routeOperationsEstimate?.fuelCostUsd || 0).toFixed(2)}</strong><small>at 24,000 VND / L · 25,000 VND / USD</small></div>
                     </div>
-                    <div className="chart-legend"><span><i className="delivery-key" /> Cumulative map-preview distance: {cumulativeRoutePreviewPoints.map((point) => `${point.label} ${(point.cumulativeMeters / 1000).toFixed(2)} km`).join(' · ')}</span></div>
+                    <div className="history-chart" role="img" aria-label={isSolverComparison ? 'Normalized solver trade-off chart for the latest verified API run' : 'Normalized fleet balance chart for the latest verified API run'}>
+                      <svg viewBox="0 0 700 230" preserveAspectRatio="none" aria-hidden="true">
+                        {[44, 82, 120, 158, 198].map((y) => <line x1="24" y1={y} x2="676" y2={y} key={y} />)}
+                        <text className="chart-band-label" x="24" y="20">NORMALIZED SCORE</text><text className="chart-score-label" x="8" y="48">100</text><text className="chart-score-label" x="14" y="202">0</text>
+                        {chartSeries.map((series) => { const points = chartPoints(series.values); return <g className={series.className} key={series.className}>
+                          {points.length === 1 && <line x1="76" y1={points[0].y} x2="624" y2={points[0].y} />}
+                          <polyline points={points.map((point) => `${point.x},${point.y}`).join(' ')} />
+                          {points.map((point, index) => <circle cx={point.x} cy={point.y} r="4" key={`${series.className}-${index}`} />)}
+                        </g> })}
+                      </svg>
+                      <div className="chart-labels" style={{ gridTemplateColumns: `repeat(${Math.max(chartLabels.length, 1)}, 1fr)` }}>{chartLabels.map((label) => <span key={label}>{label}</span>)}</div>
+                    </div>
+                    <div className="chart-legend">{chartSeries.map((series) => <span key={series.className}><i className={`${series.className}-key`} /> {series.label}</span>)}<span className="chart-method-note">All lines are normalized 0–100; compare each metric’s shape, not its raw units.</span></div>
+                    <div className="vehicle-route-strip" aria-label="Vehicle route allocation evidence">
+                      {truckRoutes.map((route) => <button type="button" key={route.truckId} className={selectedTruckId === route.truckId ? 'is-selected' : ''} onClick={() => { setSelectedTruckId(route.truckId); setCurrentScreen('live') }}>
+                        <i style={{ background: route.color }} /><span><strong>{route.truckName}</strong><small>{vehicleSolverLabel}</small></span><b>View route</b>
+                      </button>)}
+                    </div>
                   </>
                 ) : (
                   <div className="empty-state overview-empty-state" role="status"><Map size={20} /><div><h2>No verified route yet</h2><p>Load a demo scenario in Route Planner, then run optimization to populate this chart.</p></div></div>
@@ -997,6 +1099,10 @@ function App() {
             runId={runEvidence?.runId ?? null}
             onMapClick={handleMapClick}
             newStopIds={newStopIds}
+            selectedTruckId={selectedTruckId}
+            onSelectTruck={setSelectedTruckId}
+            vehicleSolverLabel={vehicleSolverLabel}
+            quantumEvidenceLabel={quantumEvidenceLabel}
           />
         </div>
       )}
@@ -1007,6 +1113,9 @@ function App() {
           quantumWarmStart={quantumWarmStart}
           runEvidence={runEvidence}
           onBack={() => setCurrentScreen('overview')}
+          runHistory={runHistory}
+          isLoadingHistory={isLoadingHistory}
+          onSelectHistoryRun={selectHistoricalRun}
         />
       )}
       </div>
