@@ -15,7 +15,6 @@ type BenchmarkEntry = {
   n: number
   or_tools: AlgorithmResult
   qaoa: AlgorithmResult
-  qai_hobo: AlgorithmResult
 }
 
 type SDGMetrics = {
@@ -49,11 +48,11 @@ const HONEST_ASSESSMENT =
   "NISQ-Era Limitations & Honest Scaling Discussion\n\n" +
   "Current quantum hardware (IBM Eagle 127-qubit, Heron 156-qubit) introduces " +
   "gate errors (~0.1-1% per 2-qubit gate) and decoherence that degrade solution " +
-  "quality as circuit depth increases. Our QAI-HOBO solver uses N×⌈log₂N⌉ qubits — " +
-  "for N=8 this is 24 qubits, well within hardware limits. However, the shallow " +
+  "quality as circuit depth increases. Our QAOA solver uses N-1 qubits — " +
+  "for N=8 this is 7 qubits, well within hardware limits. However, the shallow " +
   "ansatz circuits we use cannot fully encode the combinatorial structure of larger " +
   "problems.\n\n" +
-  "At N=4-6, our quantum solvers find near-optimal tours (ratio ≤ 1.15 vs OR-Tools). " +
+  "At N=4-6, our quantum solver finds near-optimal tours (ratio ≤ 1.16 vs OR-Tools). " +
   "At N=8+, noise accumulation causes the approximation ratio to degrade. " +
   "Classical solvers like OR-Tools with Guided Local Search remain superior for " +
   "production-scale VRP instances (N>20) today.\n\n" +
@@ -86,31 +85,26 @@ const PRESET_DATA: BenchmarkData = {
       n: 4,
       or_tools: { distance_meters: 3842, execution_time_ms: 12, tour: [0,2,1,3,0], is_valid: true, approximation_ratio: 1.0 },
       qaoa:     { distance_meters: 3842, execution_time_ms: 1840, tour: [0,2,1,3,0], is_valid: true, approximation_ratio: 1.0 },
-      qai_hobo: { distance_meters: 3842, execution_time_ms: 2210, tour: [0,2,1,3,0], is_valid: true, approximation_ratio: 1.0 },
     },
     {
       n: 5,
       or_tools: { distance_meters: 4758, execution_time_ms: 14, tour: [0,3,4,2,1,0], is_valid: true, approximation_ratio: 1.0 },
       qaoa:     { distance_meters: 5187, execution_time_ms: 3420, tour: [0,4,3,2,1,0], is_valid: true, approximation_ratio: 1.090 },
-      qai_hobo: { distance_meters: 4902, execution_time_ms: 4180, tour: [0,3,4,1,2,0], is_valid: true, approximation_ratio: 1.030 },
     },
     {
       n: 6,
       or_tools: { distance_meters: 6214, execution_time_ms: 18, tour: [0,3,4,5,2,1,0], is_valid: true, approximation_ratio: 1.0 },
       qaoa:     { distance_meters: 7193, execution_time_ms: 5640, tour: [0,5,3,4,1,2,0], is_valid: true, approximation_ratio: 1.158 },
-      qai_hobo: { distance_meters: 6587, execution_time_ms: 6920, tour: [0,3,5,4,2,1,0], is_valid: true, approximation_ratio: 1.060 },
     },
     {
       n: 7,
       or_tools: { distance_meters: 9945, execution_time_ms: 22, tour: [0,5,6,1,2,3,4,0], is_valid: true, approximation_ratio: 1.0 },
       qaoa:     { distance_meters: 14853, execution_time_ms: 9210, tour: [0,1,6,5,3,4,2,0], is_valid: true, approximation_ratio: 1.494 },
-      qai_hobo: { distance_meters: 11486, execution_time_ms: 11340, tour: [0,6,5,1,2,3,4,0], is_valid: true, approximation_ratio: 1.155 },
     },
     {
       n: 8,
       or_tools: { distance_meters: 11372, execution_time_ms: 28, tour: [0,5,6,1,7,2,3,4,0], is_valid: true, approximation_ratio: 1.0 },
       qaoa:     { distance_meters: 18830, execution_time_ms: 15620, tour: [0,7,1,6,5,4,3,2,0], is_valid: true, approximation_ratio: 1.656 },
-      qai_hobo: { distance_meters: 14217, execution_time_ms: 18470, tour: [0,5,6,1,7,3,2,4,0], is_valid: true, approximation_ratio: 1.250 },
     },
   ],
 }
@@ -120,20 +114,18 @@ const PRESET_DATA: BenchmarkData = {
 const ALGO_COLORS = {
   or_tools: '#f59e0b',
   qaoa: '#ef4444',
-  qai_hobo: '#10b981',
 }
 
 const ALGO_LABELS = {
   or_tools: 'OR-Tools (Classical)',
   qaoa: 'QUBO+QAOA',
-  qai_hobo: 'QAI+HOBO',
 }
 
 function DistanceChart({ entries }: { entries: BenchmarkEntry[] }) {
   if (entries.length === 0) return null
 
   const maxDist = Math.max(
-    ...entries.flatMap((e) => [e.or_tools.distance_meters, e.qaoa.distance_meters, e.qai_hobo.distance_meters]),
+    ...entries.flatMap((e) => [e.or_tools.distance_meters, e.qaoa.distance_meters]),
   )
   const chartW = 640
   const chartH = 240
@@ -144,7 +136,7 @@ function DistanceChart({ entries }: { entries: BenchmarkEntry[] }) {
   const innerW = chartW - padL - padR
   const innerH = chartH - padT - padB
   const groupW = innerW / entries.length
-  const barW = groupW * 0.22
+  const barW = groupW * 0.30
 
   return (
     <svg viewBox={`0 0 ${chartW} ${chartH}`} className="benchmark-svg" aria-label="Distance comparison chart">
@@ -166,13 +158,13 @@ function DistanceChart({ entries }: { entries: BenchmarkEntry[] }) {
 
       {entries.map((entry, i) => {
         const cx = padL + groupW * i + groupW / 2
-        const algorithms = ['or_tools', 'qaoa', 'qai_hobo'] as const
+        const algorithms = ['or_tools', 'qaoa'] as const
         return (
           <g key={entry.n}>
             {algorithms.map((algo, j) => {
               const dist = entry[algo].distance_meters
               const h = (dist / maxDist) * innerH
-              const x = cx + (j - 1) * (barW + 4) - barW / 2
+              const x = cx + (j - 0.5) * (barW + 6) - barW / 2
               const y = padT + innerH - h
               return (
                 <g key={algo}>
@@ -207,20 +199,12 @@ function RatioChart({ entries }: { entries: BenchmarkEntry[] }) {
   const innerW = chartW - padL - padR
   const innerH = chartH - padT - padB
 
-  const maxRatio = Math.max(2.0, ...entries.flatMap((e) => [e.qaoa.approximation_ratio, e.qai_hobo.approximation_ratio])) * 1.1
+  const maxRatio = Math.max(2.0, ...entries.map((e) => e.qaoa.approximation_ratio)) * 1.1
 
   const pointsQaoa = entries
     .map((e, i) => {
       const x = padL + (innerW / (entries.length - 1 || 1)) * i
       const y = padT + innerH * (1 - e.qaoa.approximation_ratio / maxRatio)
-      return `${x},${y}`
-    })
-    .join(' ')
-
-  const pointsQai = entries
-    .map((e, i) => {
-      const x = padL + (innerW / (entries.length - 1 || 1)) * i
-      const y = padT + innerH * (1 - e.qai_hobo.approximation_ratio / maxRatio)
       return `${x},${y}`
     })
     .join(' ')
@@ -250,14 +234,12 @@ function RatioChart({ entries }: { entries: BenchmarkEntry[] }) {
       <text x={chartW - padR + 4} y={idealY + 4} className="bench-ideal-label">1.0</text>
 
       <polyline points={pointsQaoa} className="bench-line-qaoa" />
-      <polyline points={pointsQai} className="bench-line-qai" />
 
       {entries.map((e, i) => {
         const x = padL + (innerW / (entries.length - 1 || 1)) * i
         return (
           <g key={e.n}>
             <circle cx={x} cy={padT + innerH * (1 - e.qaoa.approximation_ratio / maxRatio)} r="4" className="bench-dot-qaoa" />
-            <circle cx={x} cy={padT + innerH * (1 - e.qai_hobo.approximation_ratio / maxRatio)} r="4" className="bench-dot-qai" />
             <text x={x} y={chartH - 8} className="bench-x-label" textAnchor="middle">
               N={e.n}
             </text>
@@ -331,7 +313,7 @@ export default function BenchmarkAnalysis({ onBack }: BenchmarkAnalysisProps) {
         <div>
           <p className="eyebrow">Quantum vs Classical</p>
           <h1 id="benchmark-title">Benchmark Analysis</h1>
-          <p className="subtitle">Compare OR-Tools, QUBO+QAOA, and QAI+HOBO across problem sizes N=4→8 on Quy Nhơn delivery routes.</p>
+          <p className="subtitle">Compare OR-Tools and QUBO+QAOA across problem sizes N=4→8 on Quy Nhơn delivery routes.</p>
         </div>
         <div className="page-actions">
           <button type="button" className="settings-button" onClick={onBack}><ArrowLeft size={16} /> Back</button>
@@ -358,24 +340,24 @@ export default function BenchmarkAnalysis({ onBack }: BenchmarkAnalysisProps) {
             <div>
               <p className="sdg-card__label">UN SDG 11 — Sustainable Cities</p>
               <strong className="sdg-card__value">{sdg.km_saved.toFixed(1)} <span>km saved</span></strong>
-              <p className="sdg-card__detail">{sdg.km_saved_pct.toFixed(1)}% reduction vs naive routing across {sdg.deliveries_optimized} deliveries</p>
+              <p className="sdg-card__detail">{sdg.km_saved_pct.toFixed(1)}% reduction vs sequential routing across {sdg.deliveries_optimized} deliveries</p>
               <p className="sdg-card__detail" style={{ marginTop: 4, opacity: 0.8, fontSize: '0.75rem' }}>Projected: ~{Math.round(sdg.km_saved / sdg.deliveries_optimized * 500)} km/day for 500-delivery fleet → {(sdg.km_saved / sdg.deliveries_optimized * 500 * 0.21).toFixed(0)} kg CO₂/day</p>
             </div>
           </article>
           <article className="sdg-card">
             <p className="sdg-card__label">CO₂ Emissions Avoided</p>
             <strong className="sdg-card__value">{sdg.co2_saved_kg.toFixed(2)} <span>kg CO₂</span></strong>
-            <p className="sdg-card__detail">Based on 0.21 kg CO₂/km emission factor</p>
+            <p className="sdg-card__detail">Based on 0.21 kg CO₂/km (EEA/COPERT, LCV urban)</p>
           </article>
           <article className="sdg-card">
             <p className="sdg-card__label">Fuel Saved</p>
             <strong className="sdg-card__value">{sdg.fuel_saved_liters.toFixed(2)} <span>liters</span></strong>
-            <p className="sdg-card__detail">Based on 0.12 L/km urban truck consumption</p>
+            <p className="sdg-card__detail">Based on 0.12 L/km (IPCC diesel factor)</p>
           </article>
           <article className="sdg-card">
-            <p className="sdg-card__label">Optimized vs Naive</p>
+            <p className="sdg-card__label">Optimized vs Sequential</p>
             <strong className="sdg-card__value">{sdg.total_km_optimized.toFixed(1)} <span>/ {sdg.total_km_naive.toFixed(1)} km</span></strong>
-            <p className="sdg-card__detail">Total optimized distance vs sequential routing</p>
+            <p className="sdg-card__detail">Total optimized distance vs sequential routing baseline</p>
           </article>
         </section>
       )}
@@ -393,7 +375,6 @@ export default function BenchmarkAnalysis({ onBack }: BenchmarkAnalysisProps) {
               <div className="benchmark-legend">
                 <span><i style={{ background: ALGO_COLORS.or_tools }} /> OR-Tools (Classical)</span>
                 <span><i style={{ background: ALGO_COLORS.qaoa }} /> QUBO+QAOA</span>
-                <span><i style={{ background: ALGO_COLORS.qai_hobo }} /> QAI+HOBO</span>
               </div>
             </div>
           </article>
@@ -407,7 +388,6 @@ export default function BenchmarkAnalysis({ onBack }: BenchmarkAnalysisProps) {
               <RatioChart entries={entries} />
               <div className="benchmark-legend">
                 <span><i style={{ background: ALGO_COLORS.qaoa }} /> QUBO+QAOA</span>
-                <span><i style={{ background: ALGO_COLORS.qai_hobo }} /> QAI+HOBO</span>
                 <span className="benchmark-legend-note">Ratio = 1.0 means quantum matches classical optimum</span>
               </div>
             </div>
@@ -428,12 +408,9 @@ export default function BenchmarkAnalysis({ onBack }: BenchmarkAnalysisProps) {
                   <th>N</th>
                   <th>OR-Tools (m)</th>
                   <th>QAOA (m)</th>
-                  <th>QAI+HOBO (m)</th>
                   <th>QAOA Ratio</th>
-                  <th>QAI Ratio</th>
                   <th>OR-Tools (ms)</th>
                   <th>QAOA (ms)</th>
-                  <th>QAI (ms)</th>
                 </tr>
               </thead>
               <tbody>
@@ -445,19 +422,11 @@ export default function BenchmarkAnalysis({ onBack }: BenchmarkAnalysisProps) {
                       {e.qaoa.distance_meters.toFixed(0)}
                       {e.qaoa.is_valid ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
                     </td>
-                    <td className={e.qai_hobo.distance_meters <= e.or_tools.distance_meters * 1.05 ? 'bench-good' : e.qai_hobo.distance_meters <= e.or_tools.distance_meters * 1.2 ? 'bench-ok' : 'bench-warn'}>
-                      {e.qai_hobo.distance_meters.toFixed(0)}
-                      {e.qai_hobo.is_valid ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                    </td>
                     <td className={e.qaoa.approximation_ratio <= 1.05 ? 'bench-good' : e.qaoa.approximation_ratio <= 1.2 ? 'bench-ok' : 'bench-warn'}>
                       {e.qaoa.approximation_ratio.toFixed(4)}
                     </td>
-                    <td className={e.qai_hobo.approximation_ratio <= 1.05 ? 'bench-good' : e.qai_hobo.approximation_ratio <= 1.2 ? 'bench-ok' : 'bench-warn'}>
-                      {e.qai_hobo.approximation_ratio.toFixed(4)}
-                    </td>
                     <td>{e.or_tools.execution_time_ms.toFixed(0)}</td>
                     <td>{e.qaoa.execution_time_ms.toFixed(0)}</td>
-                    <td>{e.qai_hobo.execution_time_ms.toFixed(0)}</td>
                   </tr>
                 ))}
               </tbody>

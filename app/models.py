@@ -27,7 +27,7 @@ class QuantumJob(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     run_id = Column(String, ForeignKey("benchmark_runs.id"), nullable=False)
     job_id = Column(String, nullable=False, index=True)
-    algorithm = Column(String, nullable=False)  # QAOA, QAI_HOBO
+    algorithm = Column(String, nullable=False)  # QAOA
     backend_name = Column(String, nullable=False)
     status = Column(String, default="SUBMITTED")  # SUBMITTED, COMPLETED, FAILED
     qpu_time_seconds = Column(Float, nullable=True)
@@ -41,7 +41,7 @@ class BenchmarkResult(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     run_id = Column(String, ForeignKey("benchmark_runs.id"), nullable=False)
-    algorithm = Column(String, nullable=False)  # OR-Tools, QAOA, QAI_HOBO
+    algorithm = Column(String, nullable=False)  # OR-Tools, QAOA
     tour = Column(Text, nullable=False)  # JSON serialized list of route indices
     distance_meters = Column(Float, nullable=False)
     is_valid = Column(Boolean, default=True)

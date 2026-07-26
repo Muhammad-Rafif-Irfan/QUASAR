@@ -1,6 +1,6 @@
 # QUASAR (Quantum-Accelerated Supply-chain And Routing) 🚀
 
-QUASAR is a classical-quantum hybrid logistics orchestration system designed to tackle NP-hard Vehicle Routing Problems (VRP) and Traveling Salesperson Problems (TSP) using a cutting-edge **Quantum Annealing-Inspired (QAI) + Higher-Order Binary Optimization (HOBO)** architecture.
+QUASAR is a classical-quantum hybrid logistics orchestration system designed to tackle NP-hard Vehicle Routing Problems (VRP) and Traveling Salesperson Problems (TSP) using a **QUBO + QAOA (Quantum Approximate Optimization Algorithm)** hybrid quantum-classical architecture.
 
 Developed as part of the **QC4SG Hackathon 2026** (Team 23).
 
@@ -64,11 +64,10 @@ QUASAR/
 │   ├── schemas.py               # Pydantic validation schemas
 │   └── services/
 │       ├── __init__.py
-│       ├── quantum_driver.py    # Qiskit QAOA / QAI-HOBO loops & OR-Tools solver
+│       ├── quantum_driver.py    # Qiskit QAOA loops & OR-Tools solver
 │       └── routing.py           # OSMnx snapping, distance matrix, and Folium maps
 ├── core/                        # Team's standalone mathematical solver modules
-│   ├── base_solver.py           # Core base solver classes
-│   └── solver_qai_hobo.py       # Standalone QAI + HOBO solver logic
+│   └── base_solver.py           # Core base solver classes
 ├── services/
 │   └── classical_solver.py      # Standalone OR-Tools solver logic
 ├── requirements.txt             # Project requirements

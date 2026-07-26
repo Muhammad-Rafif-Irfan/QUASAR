@@ -15,14 +15,14 @@ function RoutingDetailsModal({ onClose, orders, vehicles, truckRoutes, totalDist
   const totalDemand = orders.reduce((sum, o) => sum + (Number(o.weight) || 0), 0)
   const totalCapacity = vehicles.reduce((sum, v) => sum + (Number(v.capacity) || 0), 0)
   const n = stops.length + 1 // stops + depot
-  const qubits = n * Math.ceil(Math.log2(Math.max(n, 2)))
+  const qubits = n - 1 // QAOA uses N-1 qubits (depot fixed at position 0)
 
   const routingDetails: [string, string, boolean?][] = [
-    ['Algorithm', 'QAI-HOBO + QAOA hybrid quantum-classical'],
+    ['Algorithm', 'QUBO + QAOA hybrid quantum-classical'],
     ['Backend', 'StatevectorSampler (Qiskit 2.x)'],
-    ['Core solver', 'OR-Tools GLS → QAI warm-start'],
-    ['QUBO variables', `N×⌈log₂N⌉ = ${n}×${Math.ceil(Math.log2(Math.max(n, 2)))} = ${qubits} qubits`],
-    ['Iterations', '5 temperature steps × 4096 shots'],
+    ['Core solver', 'OR-Tools GLS (classical baseline)'],
+    ['QUBO variables', `N-1 = ${n}-1 = ${qubits} qubits`],
+    ['Iterations', '3 COBYLA iterations × 1024 shots'],
     ['Execution time', `${(totalDistance / 40000 * 60).toFixed(1)} min (estimated fleet time)`],
     ['Vehicles assigned', `${truckRoutes.length} of ${vehicles.length}`],
     ['Total stops', `${stops.length} delivery points`],

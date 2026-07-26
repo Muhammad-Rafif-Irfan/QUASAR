@@ -82,8 +82,8 @@ const REAL_ORDERS: Order[] = [
 const REAL_COORDS: Record<string, DatasetCoord> = {
   // OSM Nominatim: lat=13.7787, lon=109.2425 (osm_id: 243067516)
   R1:  { id: 'R1',  name: 'Cảng Quy Nhơn',             lat: 13.7787, lon: 109.2425, weight: '80' },
-  // Google Maps: GO! Quy Nhơn, KĐT Vũng Chua — lat≈13.7520
-  R2:  { id: 'R2',  name: 'GO! Quy Nhơn (Big C)',       lat: 13.7520, lon: 109.2290, weight: '45' },
+  // Google Maps: GO! Quy Nhơn, Kim Cuc Plaza, KĐT An Phước — verified 2026-07
+  R2:  { id: 'R2',  name: 'GO! Quy Nhơn (Big C)',       lat: 13.7546, lon: 109.2079, weight: '45' },
   // Google Maps: 07 Lê Duẩn, Quy Nhơn — lat=13.7675, lon=109.2220
   R3:  { id: 'R3',  name: 'Co.opmart Quy Nhơn',         lat: 13.7675, lon: 109.2220, weight: '55' },
   // OSM Nominatim: lat=13.7594, lon=109.2173 (osm_id: 971127478)
@@ -92,24 +92,24 @@ const REAL_COORDS: Record<string, DatasetCoord> = {
   R5:  { id: 'R5',  name: 'BV Đa khoa Bình Định',       lat: 13.7730, lon: 109.2290, weight: '20' },
   // Google Maps: Chợ Lớn Quy Nhơn, Phan Bội Châu
   R6:  { id: 'R6',  name: 'Chợ Lớn Quy Nhơn',          lat: 13.7700, lon: 109.2250, weight: '52' },
-  // Google Maps: FPT Software Quy Nhơn AI campus
-  R7:  { id: 'R7',  name: 'FPT Software Quy Nhơn',      lat: 13.7470, lon: 109.2160, weight: '25' },
+  // Google Maps: FPT Software Quy Nhơn, 12 Đại lộ Khoa học, Quy Hòa — verified 2026-07
+  R7:  { id: 'R7',  name: 'FPT Software Quy Nhơn',      lat: 13.7174, lon: 109.2107, weight: '25' },
   // Google Maps: KCN Phú Tài, Trần Quang Diệu
   R8:  { id: 'R8',  name: 'KCN Phú Tài',                lat: 13.7445, lon: 109.2090, weight: '70' },
   // OSM Nominatim: Cầu Diêu Trì area — lat=13.7993, lon=109.1477
   R9:  { id: 'R9',  name: 'Ga Diêu Trì',                lat: 13.7993, lon: 109.1477, weight: '40' },
   // Google Maps: Quảng trường Nguyễn Tất Thành
   R10: { id: 'R10', name: 'QT Nguyễn Tất Thành',        lat: 13.7750, lon: 109.2200, weight: '15' },
-  // Google Maps: KKT Nhơn Hội, bán đảo Phương Mai
-  R11: { id: 'R11', name: 'KCN Nhơn Hội',               lat: 13.8100, lon: 109.2600, weight: '65' },
+  // Google Maps: KCN Nhơn Hội A, bán đảo Phương Mai — verified 2026-07
+  R11: { id: 'R11', name: 'KCN Nhơn Hội',               lat: 13.8334, lon: 109.2687, weight: '65' },
   // Google Maps: Chợ Đầm, Đống Đa, Quy Nhơn
   R12: { id: 'R12', name: 'Chợ Đầm',                    lat: 13.7720, lon: 109.2340, weight: '48' },
   // Google Maps: BV Quân Y 13, Nguyễn Huệ
   R13: { id: 'R13', name: 'BV Quân Y 13',               lat: 13.7650, lon: 109.2330, weight: '18' },
   // Google Maps: Becamex VSIP Bình Định, Vân Canh
   R14: { id: 'R14', name: 'Becamex VSIP',               lat: 13.7180, lon: 109.1230, weight: '75' },
-  // Google Maps: Bãi tắm Hoàng Hậu, Ghềnh Ráng
-  R15: { id: 'R15', name: 'Bãi tắm Hoàng Hậu',         lat: 13.7480, lon: 109.2350, weight: '12' },
+  // Google Maps: Bãi tắm Hoàng Hậu, Ghềnh Ráng — verified 2026-07 (Wikipedia: 13.74278, 109.21583)
+  R15: { id: 'R15', name: 'Bãi tắm Hoàng Hậu',         lat: 13.7424, lon: 109.2157, weight: '12' },
 }
 
 // ─── Export ───────────────────────────────────────────────────────────

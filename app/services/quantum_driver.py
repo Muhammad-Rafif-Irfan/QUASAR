@@ -253,108 +253,6 @@ def solve_qaoa(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool
     return qaoa_best_tour, qaoa_best_dist, qaoa_total_qpu_time
 
 
-def solve_qai_hobo(dist_matrix: np.ndarray, backend, sampler, pm, is_simulator: bool, ort_tour: list[int], run_id: str, db) -> tuple[list[int], float, float]:
-    """
-    Executes Closed-Loop QAI+HOBO on the backend (3 temperatures: 0.8, 0.4, 0.1).
-    """
-    n = len(dist_matrix)
-    B = max(1, int(np.ceil(np.log2(n))))
-    qai_best_tour = []
-    qai_best_dist = float('inf')
-    qai_total_qpu_time = 0.0
-
-    def hobo_decode(bitstring):
-        bits = list(reversed(bitstring))
-        pos = {c: sum(int(bits[c*B + b]) * (2**b) for b in range(B) if c*B+b < len(bits)) % n for c in range(n)}
-        ordered = [None] * n
-        for c, p in sorted(pos.items(), key=lambda item: item[1]):
-            if ordered[p] is None: ordered[p] = c
-            else:
-                empty = [i for i in range(n) if ordered[i] is None]
-                if empty: ordered[empty[0]] = c
-        ordered = [c for c in ordered if c is not None]
-        if 0 in ordered: ordered.remove(0)
-        return [0] + ordered + [0]
-
-    def build_qai(temp):
-        qc = QuantumCircuit(n * B)
-        qc.h(range(n * B))
-        for seq, city in enumerate(ort_tour[:-1]):
-            pos_ratio = seq / max(n - 1, 1)
-            for b in range(B): qc.rz(pos_ratio * np.pi * (b + 1) / B, city * B + b)
-        gamma = (1.0 - temp) * np.pi * 0.5 + 0.1
-        qc.rx(temp * np.pi, range(n * B))
-        for i in range((n * B)-1):
-            qc.cx(i, i+1)
-            qc.rz(gamma, i+1)
-            qc.cx(i, i+1)
-        qc.measure_all()
-        return qc
-
-    suhu_list = [0.8, 0.4, 0.1]
-    for i, temp in enumerate(suhu_list):
-        qc = build_qai(temp)
-        backend_name = "Local Statevector Simulator" if is_simulator else backend.name
-        job_id_placeholder = f"sim-qai-{i+1}-{uuid.uuid4().hex[:8]}" if is_simulator else "PENDING"
-        
-        q_job = QuantumJob(
-            run_id=run_id,
-            job_id=job_id_placeholder,
-            algorithm=f"QAI-HOBO-Temp-{temp}",
-            backend_name=backend_name,
-            status="SUBMITTED",
-            qpu_time_seconds=0.0
-        )
-        db.add(q_job)
-        db.commit()
-        
-        try:
-            if is_simulator:
-                job = sampler.run([qc])
-            else:
-                isa_qc = pm.run(qc)
-                job = sampler.run([isa_qc])
-                q_job.job_id = job.job_id()
-                db.commit()
-                
-            result = job.result()
-            
-            quantum_seconds = 0.0
-            if not is_simulator:
-                try:
-                    quantum_seconds = job.metrics().get("usage", {}).get("quantum_seconds", 0.0)
-                except Exception:
-                    pass
-            qai_total_qpu_time += quantum_seconds
-            
-            q_job.status = "COMPLETED"
-            q_job.qpu_time_seconds = quantum_seconds
-            db.commit()
-            
-            data = result[0].data
-            counts = None
-            for attr_name in dir(data):
-                attr = getattr(data, attr_name, None)
-                if attr and hasattr(attr, 'get_counts'):
-                    counts = attr.get_counts()
-                    break
-            if counts is None:
-                counts = data.meas.get_counts()
-                
-            bits = max(counts, key=counts.get)
-            tour = hobo_decode(bits)
-            d = tour_distance(tour, dist_matrix)
-            
-            if d < qai_best_dist:
-                qai_best_dist = d
-                qai_best_tour = tour
-        except Exception as e:
-            q_job.status = "FAILED"
-            db.commit()
-            raise e
-
-    return qai_best_tour, qai_best_dist, qai_total_qpu_time
-
 
 def run_optimization_pipeline(run_id: str, depot: dict, stops: list[dict]):
     """
@@ -420,29 +318,6 @@ def run_optimization_pipeline(run_id: str, depot: dict, stops: list[dict]):
         
         render_map(qaoa_tour, points, G, nodes, f"static/maps/{run_id}_QAOA.html", f"QAOA ({qaoa_dist}m)", "red")
 
-        # Step 5: Run QAI+HOBO
-        t0_qai = time.time()
-        qai_tour, qai_dist, _ = solve_qai_hobo(dist_matrix, backend, sampler, pm, is_simulator, ort_tour, run_id, db)
-        qai_time_ms = (time.time() - t0_qai) * 1000.0
-        
-        qai_is_val, qai_val_err = validate_tour(qai_tour, n)
-        qai_ratio = float(qai_dist / ort_dist) if ort_dist > 0 else 0.0
-        
-        qai_result = BenchmarkResult(
-            run_id=run_id,
-            algorithm="QAI+HOBO",
-            tour=json.dumps(qai_tour),
-            distance_meters=float(qai_dist),
-            is_valid=qai_is_val,
-            validation_error=qai_val_err,
-            approximation_ratio=qai_ratio,
-            execution_time_ms=qai_time_ms
-        )
-        db.add(qai_result)
-        db.commit()
-        
-        render_map(qai_tour, points, G, nodes, f"static/maps/{run_id}_QAI_HOBO.html", f"QAI+HOBO ({qai_dist}m)", "green")
-
         # Update status to COMPLETED
         run.status = "COMPLETED"
         db.commit()
@@ -468,12 +343,12 @@ def run_optimization_pipeline(run_id: str, depot: dict, stops: list[dict]):
 BENCHMARK_POINTS = [
     {"name": "Cổng KCN Phú Tài", "lat": 13.7460, "lon": 109.2060},
     {"name": "Cảng Quy Nhơn",     "lat": 13.7787, "lon": 109.2425},
-    {"name": "GO! Quy Nhơn",      "lat": 13.7520, "lon": 109.2290},
+    {"name": "GO! Quy Nhơn",      "lat": 13.7546, "lon": 109.2079},
     {"name": "Co.opmart",          "lat": 13.7675, "lon": 109.2220},
     {"name": "ĐH Quy Nhơn",      "lat": 13.7594, "lon": 109.2173},
     {"name": "BV Đa khoa",        "lat": 13.7730, "lon": 109.2290},
     {"name": "Chợ Lớn QN",        "lat": 13.7700, "lon": 109.2250},
-    {"name": "FPT Software",      "lat": 13.7470, "lon": 109.2160},
+    {"name": "FPT Software",      "lat": 13.7174, "lon": 109.2107},
 ]
 
 # Average CO₂ emission factor for a small delivery truck (kg CO₂ per km)
@@ -485,11 +360,11 @@ HONEST_ASSESSMENT = (
     "NISQ-Era Limitations & Honest Scaling Discussion\n\n"
     "Current quantum hardware (IBM Eagle 127-qubit, Heron 156-qubit) introduces "
     "gate errors (~0.1-1% per 2-qubit gate) and decoherence that degrade solution "
-    "quality as circuit depth increases. Our QAI-HOBO solver uses N×⌈log₂N⌉ qubits — "
-    "for N=8 this is 24 qubits, well within hardware limits. However, the shallow "
+    "quality as circuit depth increases. Our QAOA solver uses N-1 qubits — "
+    "for N=8 this is 7 qubits, well within hardware limits. However, the shallow "
     "ansatz circuits we use cannot fully encode the combinatorial structure of larger "
     "problems.\n\n"
-    "At N=4-6, our quantum solvers find near-optimal tours (ratio ≤ 1.15 vs OR-Tools). "
+    "At N=4-6, our quantum solver finds near-optimal tours (ratio ≤ 1.16 vs OR-Tools). "
     "At N=8+, noise accumulation causes the approximation ratio to degrade. "
     "Classical solvers like OR-Tools with Guided Local Search remain superior for "
     "production-scale VRP instances (N>20) today.\n\n"
@@ -512,8 +387,8 @@ def _naive_tour_distance(dist_matrix, n):
 
 def run_benchmark_suite(suite_id: str):
     """
-    Run the full benchmark suite: OR-Tools vs QAOA vs QAI-HOBO
-    across problem sizes N=4,5,6,7,8 using Da Nang coordinates.
+    Run the full benchmark suite: OR-Tools vs QAOA
+    across problem sizes N=4,5,6,7,8 using Quy Nhon coordinates.
     """
     from app.models import BenchmarkSuite
     db = SessionLocal()
@@ -570,15 +445,6 @@ def run_benchmark_suite(suite_id: str):
             qaoa_valid, _ = validate_tour(qaoa_tour, n)
             qaoa_ratio = float(qaoa_dist / ort_dist) if ort_dist > 0 else 0.0
 
-            # 3. QAI-HOBO
-            t0 = time.time()
-            qai_tour, qai_dist, _ = solve_qai_hobo(
-                dist_matrix, backend, sampler, pm, is_simulator, ort_tour, temp_run_id, db
-            )
-            qai_time_ms = (time.time() - t0) * 1000.0
-            qai_valid, _ = validate_tour(qai_tour, n)
-            qai_ratio = float(qai_dist / ort_dist) if ort_dist > 0 else 0.0
-
             # Mark temp run as completed
             temp_run.status = "COMPLETED"
             db.commit()
@@ -599,23 +465,16 @@ def run_benchmark_suite(suite_id: str):
                     "is_valid": qaoa_valid,
                     "approximation_ratio": round(qaoa_ratio, 4),
                 },
-                "qai_hobo": {
-                    "distance_meters": float(qai_dist),
-                    "execution_time_ms": round(qai_time_ms, 2),
-                    "tour": qai_tour,
-                    "is_valid": qai_valid,
-                    "approximation_ratio": round(qai_ratio, 4),
-                },
             }
             entries.append(entry)
 
-            # Track best optimized distance (use best of all 3)
-            best_dist = min(ort_dist, qaoa_dist, qai_dist)
+            # Track best optimized distance (use best of both solvers)
+            best_dist = min(ort_dist, qaoa_dist)
             total_naive_distance += naive_dist
             total_optimized_distance += best_dist
             total_deliveries += n - 1  # stops, not depot
 
-            print(f"  OR-Tools: {ort_dist}m | QAOA: {qaoa_dist}m (ratio={qaoa_ratio:.3f}) | QAI: {qai_dist}m (ratio={qai_ratio:.3f})")
+            print(f"  OR-Tools: {ort_dist}m | QAOA: {qaoa_dist}m (ratio={qaoa_ratio:.3f})")
 
         # Calculate SDG metrics
         km_naive = total_naive_distance / 1000.0

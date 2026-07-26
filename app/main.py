@@ -145,7 +145,7 @@ def get_run_status(run_id: str, db: Session = Depends(get_db)):
 
 @app.post("/api/v1/benchmark", status_code=status.HTTP_202_ACCEPTED)
 def start_benchmark(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Launch a full benchmark suite comparing OR-Tools, QAOA, and QAI-HOBO across N=4→8."""
+    """Launch a full benchmark suite comparing OR-Tools and QAOA across N=4→8."""
     suite_id = str(uuid.uuid4())
 
     suite = models.BenchmarkSuite(

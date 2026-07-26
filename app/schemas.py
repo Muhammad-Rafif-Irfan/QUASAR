@@ -76,7 +76,6 @@ class BenchmarkEntry(BaseModel):
     n: int
     or_tools: AlgorithmResult
     qaoa: AlgorithmResult
-    qai_hobo: AlgorithmResult
 
 
 class SDGImpactMetrics(BaseModel):
