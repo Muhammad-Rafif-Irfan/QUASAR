@@ -3,7 +3,7 @@ import { BarChart3, Map, Navigation, PackageCheck, Route, Settings, TriangleAler
 import BenchmarkAnalysis from './BenchmarkAnalysis'
 import InitialRoutingResults, { type QuantumJob } from './InitialRoutingResults'
 import LiveDeliveryAndRouting from './LiveDeliveryAndRouting'
-import RoutePlanner, { initialOrders, initialVehicles, type Order, type Vehicle } from './RoutePlanner'
+import RoutePlanner, { WorkflowSidebar, initialOrders, initialVehicles, type Order, type Vehicle } from './RoutePlanner'
 import RoutingDetailsModal from './RoutingDetailsModal'
 import { AddNewOrderModal, ChangeAddressModal, type NewOrderDraft } from './SupportingStates'
 import { getDemoPreset, useRouteSimulation, type DemoPresetId, type OptimizedFleetRoute } from './useRouteSimulation'
@@ -11,6 +11,7 @@ import {
   DEFAULT_SOLVER_ID,
   MAX_CLASSICAL_DEMO_STOPS,
   MAX_QAOA_STOPS,
+  MAX_QAOA_PLUS_WARM_START_STOPS,
   SOLVER_OPTIONS,
   getSolverOption,
 } from './solvers'
@@ -47,13 +48,6 @@ type Metric = {
   status: 'neutral' | 'good' | 'warning' | 'alert'
 }
 
-type Activity = {
-  time: string
-  title: string
-  detail: string
-  kind: 'delivered' | 'tracking'
-}
-
 type ComparisonRow = {
   algorithm: string
   distanceMeters: number
@@ -66,6 +60,8 @@ export type RunEvidence = {
   runId: string
   stopsCount: number
   distanceMetric: string | null
+  solverLabel: string
+  quantumRequested: boolean
 }
 
 export type QuantumWarmStartEvidence = {
@@ -86,6 +82,12 @@ export type QuantumWarmStartEvidence = {
   error?: string
 }
 
+type OptimizationProgress = {
+  percent: number
+  stage: string
+  detail: string
+}
+
 const haversineMeters = (left: { lat: number; lon: number }, right: { lat: number; lon: number }) => {
   const radians = (value: number) => value * Math.PI / 180
   const dLat = radians(right.lat - left.lat)
@@ -94,28 +96,6 @@ const haversineMeters = (left: { lat: number; lon: number }, right: { lat: numbe
     + Math.cos(radians(left.lat)) * Math.cos(radians(right.lat)) * Math.sin(dLon / 2) ** 2
   return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
-
-// Metric card data for the Operations Overview page.
-const metrics: Metric[] = [
-  { label: 'Vehicles Used', value: '2', unit: '/4', detail: 'of fleet deployed', emphasis: '50%', Icon: Truck, status: 'neutral' },
-  { label: 'Packages Delivered', value: '18', unit: '/24', detail: 'completed today', emphasis: '75%', Icon: PackageCheck, status: 'good' },
-  { label: 'Active Routes', value: '3', detail: 'currently monitored', emphasis: '2 live', Icon: Map, status: 'neutral' },
-  { label: 'Operational Events', value: '4', detail: 'event listener connected', emphasis: '1 urgent', Icon: TriangleAlert, status: 'alert' },
-]
-
-const recentActivities: Activity[] = [
-  { time: '08:40', title: '13 packages delivered', detail: 'Truck T1 returned to depot · 3h 26m', kind: 'delivered' },
-  { time: '08:17', title: 'Truck T2 heading to Grand Avenue', detail: 'ETA 8 min', kind: 'tracking' },
-]
-
-const deliveryTrend = [42, 56, 51, 68, 62, 78, 73]
-const routeTrend = [28, 35, 31, 47, 42, 54, 50]
-const historicalRecords = [
-  { period: 'Today', deliveries: '18 delivered', routes: '3 active routes' },
-  { period: 'Mon, 13 May', deliveries: '16 delivered', routes: '2 completed routes' },
-  { period: 'Sun, 12 May', deliveries: '14 delivered', routes: '2 completed routes' },
-  { period: 'Sat, 11 May', deliveries: '11 delivered', routes: '1 completed route' },
-]
 
 type SettingsModalProps = {
   solverId: string
@@ -134,14 +114,14 @@ type SettingsModalProps = {
   onClose: () => void
 }
 
-function ApplicationHeader({ onOpenSettings }: { onOpenSettings: () => void }) {
+function ApplicationHeader({ onOpenSettings, onGoHome }: { onOpenSettings: () => void; onGoHome: () => void }) {
   const currentDate = new Intl.DateTimeFormat('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   }).format(new Date())
 
   return (
     <header className="topbar">
-      <a className="brand" href="#overview" aria-label="Quasar home">
+      <button type="button" className="brand" onClick={onGoHome} aria-label="Go to QUASAR overview">
         <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
           <circle cx="15" cy="15" r="9" stroke="currentColor" strokeWidth="2.2" />
           <path d="M21.5 21.5L27 27" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
@@ -150,7 +130,7 @@ function ApplicationHeader({ onOpenSettings }: { onOpenSettings: () => void }) {
           <circle cx="19" cy="19" r="1.6" fill="currentColor" />
         </svg>
         <span>QUASAR</span>
-      </a>
+      </button>
       <div className="topbar-meta">
         <span className="system-status">Connected</span>
         <span>{currentDate}</span>
@@ -264,13 +244,17 @@ function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontSca
   )
 }
 
-function OptimizationLoading({ solverLabel }: { solverLabel: string }) {
+function OptimizationLoading({ solverLabel, progress }: { solverLabel: string; progress: OptimizationProgress }) {
   return (
     <div className="optimization-overlay" role="status" aria-live="polite">
       <div>
         <Route size={20} />
-        <strong>Optimizing routes...</strong>
-        <span>Running {solverLabel}. Waiting for verified API results; no simulated fallback is shown.</span>
+        <strong>{progress.stage}</strong>
+        <span>{progress.detail}</span>
+        <div className="optimization-progress" role="progressbar" aria-label="Optimization progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent}>
+          <i style={{ width: `${progress.percent}%` }} />
+        </div>
+        <small>{progress.percent}% · {solverLabel}</small>
       </div>
     </div>
   )
@@ -292,6 +276,7 @@ function App() {
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles)
   const [currentScreen, setCurrentScreen] = useState<Screen>('overview')
   const [isOptimizing, setIsOptimizing] = useState(false)
+  const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress>({ percent: 0, stage: 'Preparing route', detail: 'Waiting to submit the verified API run.' })
   const [routingDetailsOpen, setRoutingDetailsOpen] = useState(false)
   const [changeAddressOpen, setChangeAddressOpen] = useState(false)
   const [addNewOrderOpen, setAddNewOrderOpen] = useState(false)
@@ -301,6 +286,7 @@ function App() {
   const [quantumWarmStart, setQuantumWarmStart] = useState<QuantumWarmStartEvidence | null>(null)
   const [optimizeError, setOptimizeError] = useState<string | null>(null)
   const [rerouteAfterStateChange, setRerouteAfterStateChange] = useState(false)
+  const [pendingRestoredFleetRoutes, setPendingRestoredFleetRoutes] = useState<OptimizedFleetRoute[] | null>(null)
 
   const {
     depot,
@@ -317,11 +303,122 @@ function App() {
   } = useRouteSimulation()
   const [newStopIds, setNewStopIds] = useState<Set<string>>(new Set())
   const selectedSolver = getSolverOption(solverId)
+  const canOpenLive = runEvidence != null && !isOptimizing
+  const bestDistanceMeters = comparisonRows.length ? Math.min(...comparisonRows.map((row) => row.distanceMeters)) : null
+  const quantumEvidenceCount = quantumJobs.length + (quantumWarmStart?.jobIds.length || 0)
+  const routePreviewDistances = truckRoutes.map((route) => ({
+    label: route.truckName,
+    meters: route.roadDistance || route.waypoints.reduce((total, waypoint, index) => (
+      index === 0 ? 0 : total + haversineMeters(route.waypoints[index - 1], waypoint)
+    ), 0),
+    color: route.color,
+  }))
+  const maxRoutePreviewDistance = Math.max(...routePreviewDistances.map((route) => route.meters), 1)
+  const routePreviewChartPoints = routePreviewDistances.map((route, index) => ({
+    ...route,
+    x: routePreviewDistances.length === 1 ? 350 : 34 + (index * 632) / (routePreviewDistances.length - 1),
+    y: 210 - (route.meters / maxRoutePreviewDistance) * 160,
+  }))
+  const overviewMetrics: Metric[] = [
+    {
+      label: 'Vehicles in latest run',
+      value: runEvidence ? String(truckRoutes.length) : '—',
+      unit: runEvidence ? `/${vehicles.length}` : undefined,
+      detail: runEvidence ? 'assigned by the verified API result' : 'run an optimization to populate this card',
+      emphasis: runEvidence ? 'Verified' : 'No run yet',
+      Icon: Truck,
+      status: runEvidence ? 'good' : 'neutral',
+    },
+    {
+      label: 'Delivery stops',
+      value: runEvidence ? String(runEvidence.stopsCount) : '—',
+      detail: runEvidence ? 'submitted to the latest route run' : 'not using placeholder orders',
+      emphasis: runEvidence ? 'Verified' : 'No run yet',
+      Icon: PackageCheck,
+      status: runEvidence ? 'good' : 'neutral',
+    },
+    {
+      label: 'Solver objective',
+      value: bestDistanceMeters == null ? '—' : `${(bestDistanceMeters / 1000).toFixed(2)} km`,
+      detail: runEvidence?.distanceMetric || 'available after a completed API run',
+      emphasis: runEvidence?.solverLabel || 'No run yet',
+      Icon: Map,
+      status: runEvidence ? 'neutral' : 'warning',
+    },
+    {
+      label: 'Quantum evidence',
+      value: runEvidence?.quantumRequested ? String(quantumEvidenceCount) : '—',
+      detail: !runEvidence ? 'select a quantum mode to request it' : runEvidence.quantumRequested
+        ? (quantumEvidenceCount ? 'traceable quantum job record(s)' : quantumWarmStart?.error || 'quantum path returned no traceable job record')
+        : 'not requested: latest run used a classical solver',
+      emphasis: runEvidence?.quantumRequested ? 'Requested' : 'Classical run',
+      Icon: TriangleAlert,
+      status: runEvidence?.quantumRequested && quantumEvidenceCount ? 'good' : 'neutral',
+    },
+  ]
 
   useEffect(() => {
     localStorage.setItem('quasar-theme', theme)
     localStorage.setItem('quasar-font-scale', fontScale)
   }, [theme, fontScale])
+
+  useEffect(() => {
+    if (!pendingRestoredFleetRoutes) return
+    applyOptimizedFleetRoutes(pendingRestoredFleetRoutes)
+    setPendingRestoredFleetRoutes(null)
+  }, [applyOptimizedFleetRoutes, pendingRestoredFleetRoutes, stops.length])
+
+  useEffect(() => {
+    let cancelled = false
+    const restoreLatestRun = async () => {
+      try {
+        const response = await fetch('/api/v1/optimize/latest')
+        if (response.status === 404) return
+        if (!response.ok) throw new Error(`Latest-run restore failed (${response.status})`)
+        const latest = await response.json() as {
+          run_id: string
+          stops_count: number
+          distance_metric?: string | null
+          stops: Array<{ name: string; lat: number; lon: number; demand: number }>
+          fleet_routes: OptimizedFleetRoute[]
+          results: Array<{ algorithm: string; distance_meters: number; execution_time_ms: number; is_valid: boolean; approximation_ratio?: number | null }>
+          quantum_jobs: QuantumJob[]
+        }
+        if (cancelled) return
+        const restoredStops = latest.stops.map((stop, index) => ({ id: `N${index + 1}`, name: stop.name, lat: stop.lat, lon: stop.lon }))
+        if (restoredStops.length > 0) {
+          replaceStops(restoredStops)
+          setOrders(latest.stops.map((stop, index) => ({ id: `N${index + 1}`, address: stop.name, weight: String(stop.demand), startTime: '09:00', endTime: '17:00' })))
+        }
+        if (latest.fleet_routes.length > 0) {
+          setVehicles(latest.fleet_routes.map((route) => ({ id: route.vehicle_id, name: route.vehicle_name, capacity: String(route.capacity) })))
+          setPendingRestoredFleetRoutes(latest.fleet_routes)
+        }
+        setComparisonRows(latest.results.map((row) => ({
+          algorithm: row.algorithm,
+          distanceMeters: row.distance_meters,
+          executionTimeMs: row.execution_time_ms,
+          isValid: row.is_valid,
+          approximationRatio: row.approximation_ratio ?? null,
+        })))
+        setQuantumJobs(latest.quantum_jobs)
+        const restoredSolverLabel = latest.results.some((row) => /qaoa|quantum/i.test(row.algorithm))
+          ? 'Restored verified solver comparison'
+          : latest.results[0]?.algorithm || 'Restored verified run'
+        setRunEvidence({
+          runId: latest.run_id,
+          stopsCount: latest.stops_count,
+          distanceMetric: latest.distance_metric ?? null,
+          solverLabel: restoredSolverLabel,
+          quantumRequested: latest.quantum_jobs.length > 0,
+        })
+      } catch {
+        // A dashboard must remain usable when the optional historical restore is unavailable.
+      }
+    }
+    void restoreLatestRun()
+    return () => { cancelled = true }
+  }, [replaceStops])
 
   // The verified quantum encoding is single-vehicle TSP. Keep fleet mode on
   // the production OR-Tools CVRP solver instead of presenting a false QAOA run.
@@ -377,6 +474,7 @@ function App() {
 
   const runOptimization = useCallback(async () => {
     setIsOptimizing(true)
+    setOptimizationProgress({ percent: 8, stage: 'Preparing routing request', detail: 'Validating stops, fleet capacity, and the selected solver.' })
     setOptimizeError(null)
     const solver = getSolverOption(solverId)
 
@@ -390,8 +488,13 @@ function App() {
       setIsOptimizing(false)
       return
     }
-    if (solver.id === 'qaoa_plus_qudora' && (vehicles.length !== 1 || stops.length > MAX_QAOA_STOPS)) {
-      setOptimizeError(`QAOA+ warm-start evidence is bounded to one vehicle and at most ${MAX_QAOA_STOPS} stops. Use OR-Tools CVRP for the fleet scenario.`)
+    if (solver.id === 'qaoa_plus_qudora' && stops.length > MAX_QAOA_PLUS_WARM_START_STOPS) {
+      setOptimizeError(`QAOA+ warm-start evidence accepts at most ${MAX_QAOA_PLUS_WARM_START_STOPS} stops because its bounded neighbourhood is built from the verified OR-Tools fleet route.`)
+      setIsOptimizing(false)
+      return
+    }
+    if (solver.id === 'qaoa_plus_qudora' && vehicles.length > 4) {
+      setOptimizeError('QAOA+ warm-start evidence supports up to 4 vehicles because the bounded quantum sandbox validates one seed route per vehicle.')
       setIsOptimizing(false)
       return
     }
@@ -408,6 +511,7 @@ function App() {
 
     try {
       setQuantumWarmStart(null)
+      setOptimizationProgress({ percent: 18, stage: 'Submitting classical fleet route', detail: 'Creating the asynchronous OR-Tools CVRP run.' })
       const submit = await fetch('/api/v1/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -417,10 +521,14 @@ function App() {
         throw new Error(`Optimize failed (${submit.status})`)
       }
       const { run_id: runId } = await submit.json() as { run_id: string }
+      setOptimizationProgress({ percent: 30, stage: 'Optimizing road route', detail: `Run ${runId.slice(0, 8)} is queued. Polling verified API status.` })
 
       let completed = false
       for (let attempt = 0; attempt < 90; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 1000))
+        if (attempt > 0 && attempt % 5 === 0) {
+          setOptimizationProgress({ percent: Math.min(62, 30 + attempt * 2), stage: 'Waiting for verified route result', detail: `Polling the API for run ${runId.slice(0, 8)}. No mock result is shown.` })
+        }
         const statusRes = await fetch(`/api/v1/optimize/${runId}`)
         if (!statusRes.ok) {
           throw new Error(`Status poll failed (${statusRes.status})`)
@@ -470,6 +578,8 @@ function App() {
             runId,
             stopsCount: statusBody.stops_count,
             distanceMetric: statusBody.distance_metric ?? null,
+            solverLabel: solver.label,
+            quantumRequested: solver.algorithms.includes('qaoa') || solver.id === 'qaoa_plus_qudora',
           })
           const fleetRoutes = statusBody.fleet_routes || []
           if (fleetRoutes.length > 0) {
@@ -490,25 +600,32 @@ function App() {
           }
           if (solver.id === 'qaoa_plus_qudora') {
             try {
-              const routeSeed = fleetRoutes[0]?.route
-                || (statusBody.results || []).find((row) => row.algorithm.startsWith('OR-Tools'))?.tour
-              if (!routeSeed) throw new Error('OR-Tools did not return a seed route for the QAOA+ warm-start')
+              const routeSeed = fleetRoutes.length > 0
+                ? fleetRoutes.map((route) => route.route)
+                : [(statusBody.results || []).find((row) => row.algorithm.startsWith('OR-Tools'))?.tour]
+              if (routeSeed.some((route) => !route || route.length < 2)) throw new Error('OR-Tools did not return a valid fleet seed for the QAOA+ warm-start')
               const locations = [depot, ...stops]
               const matrix = locations.map((from) => locations.map((to) => haversineMeters(from, to)))
+              const activeVehicles = vehicles.slice(0, 4)
+              if (routeSeed.length !== activeVehicles.length) throw new Error('The classical seed route count does not match the configured fleet')
+              setOptimizationProgress({ percent: 72, stage: 'Building bounded QAOA+ neighbourhood', detail: `OR-Tools produced the fleet seed. Encoding at most 8 local moves, not all ${stops.length} stops.` })
+              setOptimizationProgress({ percent: 84, stage: 'Running QAOA+ on QUDORA', detail: 'Transpiling the bounded circuit and waiting for the Qamelion cloud result.' })
               const warmStartRes = await fetch('/api/v1/quantum/warm-start', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 matrix,
                 demands: [0, ...stops.map((stop) => demandById.get(stop.id) || 0)],
-                capacities: [Number(vehicles[0]?.capacity) || 0],
-                starting_nodes: [0],
-                routes: { 0: routeSeed },
+                capacities: activeVehicles.map((vehicle) => Number(vehicle.capacity) || 0),
+                starting_nodes: activeVehicles.map(() => 0),
+                routes: Object.fromEntries(routeSeed.map((route, index) => [String(index), route])),
                 problem_type: 'cvrp',
                 executor: 'qudora',
                 qudora_backend: 'Qamelion',
                 shots: 64,
                 maxiter: 8,
+                max_candidates: 8,
+                neighborhood_size: 8,
                 random_seed: 42,
               }),
             })
@@ -531,6 +648,7 @@ function App() {
               nQubits: Number(result.n_qubits || 0),
               circuitDepth: result.circuit_depth == null ? null : Number(result.circuit_depth),
               })
+              setOptimizationProgress({ percent: 96, stage: 'QAOA+ evidence verified', detail: 'Received the QUDORA result and recorded its execution evidence.' })
             } catch (warmStartError) {
               setQuantumWarmStart({
                 algorithm: 'QAOA+ XY warm-start', executor: 'qudora', backend: null, jobIds: [], valid: false,
@@ -547,6 +665,7 @@ function App() {
       if (!completed) {
         throw new Error('Optimization timed out while waiting for results')
       }
+      setOptimizationProgress({ percent: 100, stage: 'Verified result ready', detail: 'Opening the route result and execution evidence.' })
       setCurrentScreen('results')
     } catch (error) {
       setComparisonRows([])
@@ -597,7 +716,7 @@ function App() {
         ])
     setNewStopIds(new Set())
     setOptimizeError(null)
-    if (preset.stops.length > MAX_QAOA_STOPS && (getSolverOption(solverId).algorithms.includes('qaoa') || solverId === 'qaoa_plus_qudora')) {
+    if (preset.stops.length > MAX_QAOA_STOPS && getSolverOption(solverId).algorithms.includes('qaoa')) {
       setSolverId('or_tools')
     }
   }, [replaceStops, solverId])
@@ -662,7 +781,7 @@ function App() {
 
   return (
     <main className={`app theme-${theme} font-${fontScale}`}>
-      <ApplicationHeader onOpenSettings={() => setSettingsOpen(true)} />
+      <ApplicationHeader onOpenSettings={() => setSettingsOpen(true)} onGoHome={() => setCurrentScreen('overview')} />
 
       <div className="screen-transition" key={currentScreen}>
       {currentScreen === 'overview' && (
@@ -684,7 +803,7 @@ function App() {
               </div>
             </div>
             <section className="metric-grid" aria-label="Today operations summary">
-              {metrics.map(({ Icon, ...metric }) => (
+              {overviewMetrics.map(({ Icon, ...metric }) => (
                 <article className="metric" key={metric.label}>
                   <div className="metric-label"><Icon size={17} /><span>{metric.label}</span></div>
                   <strong>{metric.value}{metric.unit && <span>{metric.unit}</span>}</strong>
@@ -696,64 +815,61 @@ function App() {
               <article className="panel history-chart-card">
                 <div className="panel-heading">
                   <div>
-                    <p className="section-label">Delivery performance</p>
-                    <h2>Delivery activity over time</h2>
+                    <p className="section-label">Latest route geometry</p>
+                    <h2>Route allocation by vehicle</h2>
                   </div>
                 </div>
-                <div className="history-chart" role="img" aria-label="Seven-day chart of delivered packages and completed routes">
-                  <svg viewBox="0 0 700 230" preserveAspectRatio="none" aria-hidden="true">
-                    <line x1="24" y1="30" x2="676" y2="30" />
-                    <line x1="24" y1="90" x2="676" y2="90" />
-                    <line x1="24" y1="150" x2="676" y2="150" />
-                    <line x1="24" y1="210" x2="676" y2="210" />
-                    <polyline className="delivery-line" points={deliveryTrend.map((value, index) => `${34 + index * 104},${210 - value * 2.1}`).join(' ')} />
-                    <polyline className="routes-line" points={routeTrend.map((value, index) => `${34 + index * 104},${210 - value * 2.1}`).join(' ')} />
-                    {deliveryTrend.map((value, index) => <circle className="delivery-point" cx={34 + index * 104} cy={210 - value * 2.1} r="2.25" key={`delivery-${index}`} />)}
-                    {routeTrend.map((value, index) => <circle className="routes-point" cx={34 + index * 104} cy={210 - value * 2.1} r="2.25" key={`route-${index}`} />)}
-                  </svg>
-                  <div className="chart-labels"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Today</span></div>
-                </div>
-                <div className="chart-legend">
-                  <span><i className="delivery-key" /> Delivered packages</span>
-                  <span><i className="routes-key" /> Completed routes</span>
-                </div>
+                {runEvidence && routePreviewDistances.length > 0 ? (
+                  <>
+                    <div className="history-chart" role="img" aria-label="Map route-preview distance by vehicle in the latest verified run">
+                      <svg viewBox="0 0 700 230" preserveAspectRatio="none" aria-hidden="true">
+                        <line x1="24" y1="30" x2="676" y2="30" />
+                        <line x1="24" y1="90" x2="676" y2="90" />
+                        <line x1="24" y1="150" x2="676" y2="150" />
+                        <line x1="24" y1="210" x2="676" y2="210" />
+                        {routePreviewChartPoints.length === 1 && <line className="delivery-line" x1="84" y1={routePreviewChartPoints[0].y} x2="616" y2={routePreviewChartPoints[0].y} />}
+                        <polyline className="delivery-line" points={routePreviewChartPoints.map((point) => `${point.x},${point.y}`).join(' ')} />
+                        {routePreviewChartPoints.map((point) => <circle className="delivery-point" cx={point.x} cy={point.y} r="2.8" key={point.label} />)}
+                      </svg>
+                      <div className="chart-labels">{routePreviewChartPoints.map((point) => <span key={point.label}>{point.label}</span>)}</div>
+                    </div>
+                    <div className="chart-legend"><span><i className="delivery-key" /> Map route preview distance: {routePreviewChartPoints.map((point) => `${point.label} ${(point.meters / 1000).toFixed(2)} km`).join(' · ')}</span></div>
+                  </>
+                ) : (
+                  <div className="empty-state overview-empty-state" role="status"><Map size={20} /><div><h2>No verified route yet</h2><p>Load a demo scenario in Route Planner, then run optimization to populate this chart.</p></div></div>
+                )}
               </article>
               <article className="panel historical-data-card">
                 <div className="panel-heading">
                   <div>
-                    <p className="section-label">Historical data</p>
-                    <h2>Delivery record</h2>
+                    <p className="section-label">Run evidence</p>
+                    <h2>Latest API result</h2>
                   </div>
                 </div>
-                <div className="history-summary"><strong>94.8<span>%</span></strong><p>average on-time delivery</p></div>
-                <div className="history-records">
-                  {historicalRecords.map((record) => (
-                    <div className="history-record" key={record.period}>
-                      <span>{record.period}</span>
-                      <div><b>{record.deliveries}</b><small>{record.routes}</small></div>
-                    </div>
-                  ))}
-                </div>
+                {runEvidence ? <>
+                  <div className="history-summary"><strong>{bestDistanceMeters == null ? '—' : `${(bestDistanceMeters / 1000).toFixed(2)}`}<span>{bestDistanceMeters == null ? '' : ' km'}</span></strong><p>solver objective</p></div>
+                  <div className="history-records">
+                    <div className="history-record"><span>Run</span><div><b>{runEvidence.runId.slice(0, 8)}</b><small>{runEvidence.distanceMetric || 'distance basis unavailable'}</small></div></div>
+                    <div className="history-record"><span>Mode</span><div><b>{runEvidence.solverLabel}</b><small>{runEvidence.quantumRequested ? 'quantum path requested' : 'classical-only run'}</small></div></div>
+                    <div className="history-record"><span>Evidence</span><div><b>{quantumEvidenceCount} quantum job record(s)</b><small>{quantumEvidenceCount ? 'traceable job IDs available' : 'no quantum job was requested or returned'}</small></div></div>
+                  </div>
+                </> : <div className="empty-state overview-empty-state" role="status"><TriangleAlert size={20} /><div><h2>No API evidence yet</h2><p>This dashboard intentionally does not invent operational history.</p></div></div>}
               </article>
             </section>
             <section className="bottom-grid">
               <article className="panel activity-card">
                 <div className="panel-heading">
                   <div>
-                    <p className="section-label">Recent activity</p>
-                    <h2>Latest updates</h2>
+                    <p className="section-label">Workflow status</p>
+                    <h2>Latest verified update</h2>
                   </div>
-                  <span className="listener-status"><i /> Live updates active</span>
+                  <span className={`listener-status ${runEvidence ? '' : 'is-idle'}`}><i /> {runEvidence ? 'Verified run available' : 'Waiting for first run'}</span>
                 </div>
-                {recentActivities.map((activity) => (
-                  <div className="activity-item" key={activity.time}>
-                    <time>{activity.time}</time>
-                    <span className={`activity-mark ${activity.kind}`}>
-                      {activity.kind === 'delivered' ? <PackageCheck size={15} /> : <Navigation size={15} />}
-                    </span>
-                    <p><b>{activity.title}</b><small>{activity.detail}</small></p>
-                  </div>
-                ))}
+                <div className="activity-item">
+                  <time>{runEvidence ? 'DONE' : 'READY'}</time>
+                  <span className={`activity-mark ${runEvidence ? 'delivered' : 'tracking'}`}>{runEvidence ? <PackageCheck size={15} /> : <Navigation size={15} />}</span>
+                  <p><b>{runEvidence ? `${runEvidence.solverLabel} completed` : 'Configure a route scenario'}</b><small>{runEvidence ? `${runEvidence.stopsCount} stops · ${runEvidence.runId}` : 'Use Route Planner to load a preset or add delivery points.'}</small></p>
+                </div>
               </article>
             </section>
           </section>
@@ -769,7 +885,10 @@ function App() {
           isOptimizing={isOptimizing}
           solverId={solverId}
           onSolverChange={setSolverId}
-          onBack={() => setCurrentScreen('overview')}
+          onNavigate={setCurrentScreen}
+          canViewResults={runEvidence != null}
+          canViewLive={canOpenLive}
+          onOpenRoutingDetails={() => setRoutingDetailsOpen(true)}
           onRunOptimization={() => { void runOptimization() }}
           optimizeError={optimizeError}
           onAddDeliveryPoint={addPlannerDeliveryPoint}
@@ -784,51 +903,58 @@ function App() {
         />
       )}
       {currentScreen === 'results' && (
-        <InitialRoutingResults
-          isOptimizing={isOptimizing}
-          onEditSetup={() => setCurrentScreen('planner')}
-          onReRoute={() => { void runOptimization() }}
-          onStartOperational={() => setCurrentScreen('live')}
-          depot={depot}
-          stops={stops}
-          truckRoutes={truckRoutes}
-          totalDistance={totalDistance}
-          solverLabel={selectedSolver.label}
-          comparisonRows={comparisonRows}
-          quantumJobs={quantumJobs}
-          quantumWarmStart={quantumWarmStart}
-          runEvidence={runEvidence}
-          optimizeError={optimizeError}
-        />
+        <div className="planner-shell">
+          <WorkflowSidebar currentScreen="results" onNavigate={setCurrentScreen} canViewResults={runEvidence != null} canViewLive={canOpenLive} onOpenRoutingDetails={() => setRoutingDetailsOpen(true)} />
+          <InitialRoutingResults
+            isOptimizing={isOptimizing}
+            onEditSetup={() => setCurrentScreen('planner')}
+            onReRoute={() => { void runOptimization() }}
+            onStartOperational={() => { if (canOpenLive) setCurrentScreen('live') }}
+            depot={depot}
+            stops={stops}
+            truckRoutes={truckRoutes}
+            totalDistance={totalDistance}
+            solverLabel={selectedSolver.label}
+            comparisonRows={comparisonRows}
+            quantumJobs={quantumJobs}
+            quantumWarmStart={quantumWarmStart}
+            runEvidence={runEvidence}
+            optimizeError={optimizeError}
+          />
+        </div>
       )}
       {currentScreen === 'live' && (
-        <LiveDeliveryAndRouting
-          onChangeAddress={() => setChangeAddressOpen(true)}
-          onAddNewOrder={() => setAddNewOrderOpen(true)}
-          onEndDelivery={() => setCurrentScreen('overview')}
-          onViewLogDetails={() => setRoutingDetailsOpen(true)}
-          depot={depot}
-          stops={stops}
-          truckRoutes={truckRoutes}
-          totalDistance={totalDistance}
-          solverObjectiveMeters={comparisonRows.length ? Math.min(...comparisonRows.map((row) => row.distanceMeters)) : null}
-          distanceMetric={runEvidence?.distanceMetric ?? null}
-          runId={runEvidence?.runId ?? null}
-          onMapClick={handleMapClick}
-          newStopIds={newStopIds}
-        />
+        <div className="planner-shell">
+          <WorkflowSidebar currentScreen="live" onNavigate={setCurrentScreen} canViewResults={runEvidence != null} canViewLive={canOpenLive} onOpenRoutingDetails={() => setRoutingDetailsOpen(true)} />
+          <LiveDeliveryAndRouting
+            onChangeAddress={() => setChangeAddressOpen(true)}
+            onAddNewOrder={() => setAddNewOrderOpen(true)}
+            onEndDelivery={() => setCurrentScreen('overview')}
+            onViewLogDetails={() => setRoutingDetailsOpen(true)}
+            depot={depot}
+            stops={stops}
+            truckRoutes={truckRoutes}
+            totalDistance={totalDistance}
+            solverObjectiveMeters={comparisonRows.length ? Math.min(...comparisonRows.map((row) => row.distanceMeters)) : null}
+            distanceMetric={runEvidence?.distanceMetric ?? null}
+            runId={runEvidence?.runId ?? null}
+            onMapClick={handleMapClick}
+            newStopIds={newStopIds}
+          />
+        </div>
       )}
       {currentScreen === 'benchmark' && (
         <BenchmarkAnalysis
           rows={comparisonRows}
           quantumJobs={quantumJobs}
+          quantumWarmStart={quantumWarmStart}
           runEvidence={runEvidence}
           onBack={() => setCurrentScreen('overview')}
         />
       )}
       </div>
 
-      {isOptimizing && <OptimizationLoading solverLabel={selectedSolver.label} />}
+      {isOptimizing && <OptimizationLoading solverLabel={selectedSolver.label} progress={optimizationProgress} />}
       {settingsOpen && (
         <SettingsModal
           solverId={solverId}

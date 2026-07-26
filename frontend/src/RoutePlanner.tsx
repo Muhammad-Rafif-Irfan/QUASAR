@@ -4,6 +4,31 @@ import { SOLVER_OPTIONS, getSolverOption } from './solvers'
 import { demoPresets, type DemoPresetId, ALL_AVAILABLE_LOCATIONS, type MapLocation, type TruckRoute } from './useRouteSimulation'
 import LiveMap from './LiveMap'
 
+export type WorkflowScreen = 'overview' | 'planner' | 'results' | 'live'
+
+type WorkflowSidebarProps = {
+  currentScreen: WorkflowScreen
+  onNavigate: (screen: WorkflowScreen) => void
+  canViewResults: boolean
+  canViewLive: boolean
+  onOpenRoutingDetails: () => void
+}
+
+export function WorkflowSidebar({ currentScreen, onNavigate, canViewResults, canViewLive, onOpenRoutingDetails }: WorkflowSidebarProps) {
+  const navItemClass = (screen: WorkflowScreen) => `planner-nav-item${currentScreen === screen ? ' is-active' : ''}`
+  return (
+    <aside className="planner-sidebar" aria-label="Application navigation">
+      <nav className="planner-nav" aria-label="QUASAR sections">
+        <button type="button" className={navItemClass('overview')} onClick={() => onNavigate('overview')}>Overview</button>
+        <button type="button" className={navItemClass('planner')} onClick={() => onNavigate('planner')} aria-current={currentScreen === 'planner' ? 'page' : undefined}>Route Planner</button>
+        <button type="button" className={navItemClass('results')} onClick={() => onNavigate('results')} disabled={!canViewResults}>Initial Routing Results</button>
+        <button type="button" className={navItemClass('live')} onClick={() => onNavigate('live')} disabled={!canViewLive}>Live Delivery and Routing</button>
+        <button type="button" className="planner-nav-item" onClick={onOpenRoutingDetails} disabled={!canViewResults}>Routing Details</button>
+      </nav>
+    </aside>
+  )
+}
+
 export type Order = {
   id: string
   address: string
@@ -26,7 +51,10 @@ type RoutePlannerProps = {
   isOptimizing: boolean
   solverId: string
   onSolverChange: (id: string) => void
-  onBack: () => void
+  onNavigate: (screen: WorkflowScreen) => void
+  canViewResults: boolean
+  canViewLive: boolean
+  onOpenRoutingDetails: () => void
   onRunOptimization: () => void
   optimizeError: string | null
   onAddDeliveryPoint: () => void
@@ -58,7 +86,10 @@ function RoutePlanner({
   isOptimizing,
   solverId,
   onSolverChange,
-  onBack,
+  onNavigate,
+  canViewResults,
+  canViewLive,
+  onOpenRoutingDetails,
   onRunOptimization,
   optimizeError,
   onAddDeliveryPoint,
@@ -122,15 +153,7 @@ function RoutePlanner({
 
   return (
     <div className="planner-shell">
-      <aside className="planner-sidebar" aria-label="Application navigation">
-        <nav className="planner-nav" aria-label="QUASAR sections">
-          <button type="button" className="planner-nav-item" onClick={onBack}>Overview</button>
-          <button type="button" className="planner-nav-item is-active" aria-current="page">Route Planner</button>
-          <button type="button" className="planner-nav-item" disabled>Initial Routing Results</button>
-          <button type="button" className="planner-nav-item" disabled>Live Delivery and Routing</button>
-          <button type="button" className="planner-nav-item" disabled>Routing Details Modal</button>
-        </nav>
-      </aside>
+      <WorkflowSidebar currentScreen="planner" onNavigate={onNavigate} canViewResults={canViewResults} canViewLive={canViewLive} onOpenRoutingDetails={onOpenRoutingDetails} />
 
       <section className="workspace planner-workspace" aria-labelledby="route-planner-title">
         <div className="planner-intro">
@@ -285,7 +308,7 @@ function RoutePlanner({
 
         <div className="planner-footer-actions">
           {optimizeError && <p className="optimize-warning planner-optimize-warning" role="alert">{optimizeError}</p>}
-          <button type="button" className="settings-button" onClick={onBack}><ArrowLeft size={16} /> Back</button>
+          <button type="button" className="settings-button" onClick={() => onNavigate('overview')}><ArrowLeft size={16} /> Back</button>
           <button type="button" className="route-action" onClick={onRunOptimization} disabled={isOptimizing}>
             {isOptimizing ? 'Optimizing routes...' : 'Run Optimization'}
           </button>

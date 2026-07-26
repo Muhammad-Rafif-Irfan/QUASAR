@@ -206,7 +206,9 @@ export default function LiveMap({
   className = '',
 }: LiveMapProps) {
   const [recalculating, setRecalculating] = useState(false)
+  const [addStopMode, setAddStopMode] = useState(false)
   const prevStopsCount = useRef(stops.length)
+  const hasRoadGeometry = truckRoutes.length > 0 && truckRoutes.every((route) => route.roadGeometrySource === 'osrm')
 
   // Flash "recalculating" animation when stops change
   useEffect(() => {
@@ -222,6 +224,7 @@ export default function LiveMap({
   const handleMapClick = useCallback(
     (latlng: { lat: number; lon: number }) => {
       onMapClick?.(latlng)
+      setAddStopMode(false)
     },
     [onMapClick],
   )
@@ -232,6 +235,14 @@ export default function LiveMap({
         <div className="recalc-badge" role="status" aria-live="polite">
           <span className="recalc-spinner" />
           Recalculating routes...
+        </div>
+      )}
+      {onMapClick && (
+        <div className="map-interaction-controls">
+          <button type="button" className={addStopMode ? 'is-active' : ''} onClick={() => setAddStopMode((enabled) => !enabled)} aria-pressed={addStopMode}>
+            {addStopMode ? 'Click map to add stop' : 'Add stop on map'}
+          </button>
+          <span>{addStopMode ? 'One click adds a stop, then returns to pan.' : 'Drag to pan · scroll to zoom'}</span>
         </div>
       )}
       <MapContainer
@@ -248,7 +259,7 @@ export default function LiveMap({
 
         <AutoFitBounds depot={depot} stops={stops} />
 
-        {onMapClick && <ClickHandler onMapClick={handleMapClick} />}
+        {onMapClick && addStopMode && <ClickHandler onMapClick={handleMapClick} />}
 
         {/* Depot marker */}
         <Marker position={[depot.lat, depot.lon]} icon={DEPOT_ICON}>
@@ -310,13 +321,9 @@ export default function LiveMap({
         <AnimatedTrucks routes={truckRoutes} isLive={isLive} />
       </MapContainer>
 
-      {isLive && onMapClick && (
-        <div className="map-click-hint">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-            <circle cx="12" cy="10" r="3" />
-          </svg>
-          Click map to place new order
+      {truckRoutes.length > 0 && (
+        <div className={`map-route-source ${hasRoadGeometry ? 'is-road' : 'is-fallback'}`}>
+          {hasRoadGeometry ? 'OSRM road geometry' : 'Straight-line display fallback — OSRM unavailable'}
         </div>
       )}
     </div>

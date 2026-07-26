@@ -384,6 +384,7 @@ def inspect_runtime(db: Session = Depends(get_db)):
             "POST /api/v1/quantum/qudora/connection-check",
             "POST /api/v1/quantum/warm-start",
             "POST /api/v1/optimize",
+            "GET /api/v1/optimize/latest",
             "GET /api/v1/optimize/{run_id}",
             "GET /docs",
             "GET /static/maps/{file}.html",
@@ -511,6 +512,32 @@ def run_quantum_warm_start(
 
 
 @app.get(
+    "/api/v1/optimize/latest",
+    response_model=schemas.RunStatusResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_latest_completed_run(db: Session = Depends(get_db)):
+    """Return the newest completed persisted run for dashboard restoration.
+
+    The web client keeps only transient UI state, while SQLite survives an API
+    restart.  This endpoint lets it re-hydrate evidence without treating an
+    old run as a newly executed live request.
+    """
+    run = (
+        db.query(models.BenchmarkRun)
+        .filter(models.BenchmarkRun.status == "COMPLETED")
+        .order_by(models.BenchmarkRun.updated_at.desc())
+        .first()
+    )
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No completed optimization run has been persisted yet.",
+        )
+    return get_run_status(run.id, db)
+
+
+@app.get(
     "/api/v1/optimize/{run_id}",
     response_model=schemas.RunStatusResponse,
     status_code=status.HTTP_200_OK,
@@ -569,6 +596,7 @@ def get_run_status(run_id: str, db: Session = Depends(get_db)):
         depot_lat=run.depot_lat,
         depot_lon=run.depot_lon,
         stops_count=run.stops_count,
+        stops=[schemas.DeliveryStop(**item) for item in json.loads(run.stops_data or "[]")],
         distance_metric=run.distance_metric,
         fleet_routes=json.loads(run.fleet_routes) if run.fleet_routes else [],
         results=results_schema,

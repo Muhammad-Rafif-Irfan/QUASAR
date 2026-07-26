@@ -22,6 +22,8 @@ export type TruckRoute = {
   roadGeometry: [number, number][]
   /** Road distance in meters from OSRM */
   roadDistance: number
+  /** Whether the map line came from OSRM or is an honest straight-line fallback. */
+  roadGeometrySource: 'osrm' | 'straight-line'
 }
 
 export type OptimizedFleetRoute = {
@@ -166,9 +168,9 @@ function greedyRoute(depot: MapLocation, stops: MapLocation[]): MapLocation[] {
  * Returns an array of [lat, lon] points following real roads.
  * Falls back to straight-line waypoints on any error.
  */
-async function fetchRoadRoute(waypoints: MapLocation[]): Promise<{ geometry: [number, number][]; distance: number }> {
+async function fetchRoadRoute(waypoints: MapLocation[]): Promise<{ geometry: [number, number][]; distance: number; source: 'osrm' | 'straight-line' }> {
   if (waypoints.length < 2) {
-    return { geometry: waypoints.map((wp) => [wp.lat, wp.lon] as [number, number]), distance: 0 }
+    return { geometry: waypoints.map((wp) => [wp.lat, wp.lon] as [number, number]), distance: 0, source: 'straight-line' }
   }
 
   // OSRM expects lon,lat format (not lat,lon)
@@ -191,7 +193,7 @@ async function fetchRoadRoute(waypoints: MapLocation[]): Promise<{ geometry: [nu
     )
     const distance: number = route.distance // meters
 
-    return { geometry, distance }
+    return { geometry, distance, source: 'osrm' }
   } catch (err) {
     console.warn('OSRM routing failed, using straight lines:', err)
     // Fallback: straight lines between waypoints
@@ -201,6 +203,7 @@ async function fetchRoadRoute(waypoints: MapLocation[]): Promise<{ geometry: [nu
         if (i === 0) return 0
         return total + haversine(waypoints[i - 1].lat, waypoints[i - 1].lon, wp.lat, wp.lon)
       }, 0),
+      source: 'straight-line',
     }
   }
 }
@@ -329,11 +332,12 @@ export function useRouteSimulation() {
     async function fetchAllRoadRoutes() {
       const enriched: TruckRoute[] = await Promise.all(
         baseRoutes.map(async (route) => {
-          const { geometry, distance } = await fetchRoadRoute(route.waypoints)
+          const { geometry, distance, source } = await fetchRoadRoute(route.waypoints)
           return {
             ...route,
             roadGeometry: geometry,
             roadDistance: distance,
+            roadGeometrySource: source,
           }
         }),
       )
@@ -349,6 +353,7 @@ export function useRouteSimulation() {
         ...route,
         roadGeometry: route.waypoints.map((wp) => [wp.lat, wp.lon] as [number, number]),
         roadDistance: 0,
+        roadGeometrySource: 'straight-line',
       })),
     )
 

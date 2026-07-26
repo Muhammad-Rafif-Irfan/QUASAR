@@ -150,6 +150,9 @@ class RunStatusResponse(BaseModel):
     depot_lat: float
     depot_lon: float
     stops_count: int
+    # Persisted request inputs allow the UI to restore a completed route after
+    # an API/browser restart instead of displaying a stale mock dashboard.
+    stops: List[DeliveryStop] = Field(default_factory=list)
     distance_metric: Optional[str] = None
     fleet_routes: List[FleetRouteSchema] = Field(default_factory=list)
     results: List[BenchmarkResultSchema] = Field(default_factory=list)

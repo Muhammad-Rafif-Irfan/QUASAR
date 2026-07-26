@@ -1,6 +1,6 @@
 import { ArrowLeft, CheckCircle2, Cpu, TriangleAlert } from 'lucide-react'
 import type { QuantumJob } from './InitialRoutingResults'
-import type { RunEvidence } from './App'
+import type { QuantumWarmStartEvidence, RunEvidence } from './App'
 
 export type BenchmarkRow = {
   algorithm: string
@@ -13,6 +13,7 @@ export type BenchmarkRow = {
 type BenchmarkAnalysisProps = {
   rows: BenchmarkRow[]
   quantumJobs: QuantumJob[]
+  quantumWarmStart: QuantumWarmStartEvidence | null
   onBack: () => void
   runEvidence: RunEvidence | null
 }
@@ -20,8 +21,21 @@ type BenchmarkAnalysisProps = {
 const formatDistance = (meters: number) => `${(meters / 1000).toFixed(2)} km`
 
 /** Displays only the latest completed API response; it has no preset data. */
-export default function BenchmarkAnalysis({ rows, quantumJobs, onBack, runEvidence }: BenchmarkAnalysisProps) {
+export default function BenchmarkAnalysis({ rows, quantumJobs, quantumWarmStart, onBack, runEvidence }: BenchmarkAnalysisProps) {
   const bestDistance = rows.length ? Math.min(...rows.map((row) => row.distanceMeters)) : null
+  const quantumEvidenceCount = quantumJobs.length + (quantumWarmStart?.jobIds.length || 0)
+  const quantumRequested = runEvidence?.quantumRequested ?? false
+  const quantumRows = rows.filter((row) => /qaoa|quantum/i.test(row.algorithm))
+  const classicalRows = rows.filter((row) => !/qaoa|quantum/i.test(row.algorithm))
+  const bestQuantumDistance = quantumRows.length ? Math.min(...quantumRows.map((row) => row.distanceMeters)) : null
+  const bestClassicalDistance = classicalRows.length ? Math.min(...classicalRows.map((row) => row.distanceMeters)) : null
+  const isMeasuredTie = bestQuantumDistance !== null && bestClassicalDistance !== null
+    && Math.abs(bestQuantumDistance - bestClassicalDistance) < 0.5
+  const quantumStatus = !quantumRequested
+    ? `Not requested — ${runEvidence?.solverLabel || 'the latest run'} was classical.`
+    : quantumEvidenceCount > 0
+      ? `${quantumEvidenceCount} traceable job record(s) from the latest run.`
+      : quantumWarmStart?.error || 'Quantum was requested, but no traceable job record was returned.'
 
   return (
     <section className="workspace" aria-labelledby="benchmark-title">
@@ -41,7 +55,7 @@ export default function BenchmarkAnalysis({ rows, quantumJobs, onBack, runEviden
           <section className="metric-grid" aria-label="Latest benchmark summary">
             <article className="metric"><div className="metric-label"><CheckCircle2 size={17} /><span>Verified results</span></div><strong>{rows.length}</strong><small className="good"><b>API returned</b> solver rows shown below</small></article>
             <article className="metric"><div className="metric-label"><Cpu size={17} /><span>Best route</span></div><strong>{bestDistance ? formatDistance(bestDistance) : '—'}</strong><small className="neutral"><b>Current run</b> smallest returned distance</small></article>
-            <article className="metric"><div className="metric-label"><Cpu size={17} /><span>Quantum jobs</span></div><strong>{quantumJobs.length}</strong><small className="neutral"><b>Traceable</b> job records from the API</small></article>
+            <article className="metric"><div className="metric-label"><Cpu size={17} /><span>Quantum evidence</span></div><strong>{quantumRequested ? quantumEvidenceCount : '—'}</strong><small className={quantumRequested && quantumEvidenceCount ? 'good' : 'neutral'}><b>{quantumRequested ? 'Requested' : 'Classical run'}</b> {quantumStatus}</small></article>
             <article className="metric"><div className="metric-label"><TriangleAlert size={17} /><span>Impact metrics</span></div><strong>Not claimed</strong><small className="warning"><b>Honest scope</b> no CO₂/SDG estimate without an approved emissions model</small></article>
           </section>
           <article className="panel planner-panel">
@@ -55,6 +69,12 @@ export default function BenchmarkAnalysis({ rows, quantumJobs, onBack, runEviden
               {rows.map((row) => <div className="planner-table-row" role="row" key={row.algorithm}><strong>{row.algorithm}</strong><span>{formatDistance(row.distanceMeters)}</span><span>{row.executionTimeMs.toFixed(1)} ms</span><span>{row.isValid ? 'Yes' : 'No'}</span><span>{row.approximationRatio === null ? '—' : row.approximationRatio.toFixed(3)}</span></div>)}
             </div>
           </article>
+          {isMeasuredTie && (
+            <article className="benchmark-disclosure" role="note">
+              <TriangleAlert size={17} />
+              <div><strong>No quantum distance advantage was measured in this run.</strong><p>This 3-stop instance is small enough for classical solvers to reach the same optimum. The reported QAOA simulator time is not a quantum speedup claim; use QAOA+ feasibility evidence on its bounded warm-start benchmark for the NISQ-specific comparison.</p></div>
+            </article>
+          )}
         </>
       )}
     </section>

@@ -13,6 +13,7 @@ export type SolverOption = {
 
 export const MAX_QAOA_STOPS = 3
 export const MAX_CLASSICAL_DEMO_STOPS = 15
+export const MAX_QAOA_PLUS_WARM_START_STOPS = MAX_CLASSICAL_DEMO_STOPS
 
 export const SOLVER_OPTIONS: SolverOption[] = [
   {
@@ -38,10 +39,10 @@ export const SOLVER_OPTIONS: SolverOption[] = [
   },
   {
     id: 'qaoa_plus_qudora',
-    label: `QAOA+ XY warm-start via QUDORA (≤${MAX_QAOA_STOPS} stops)`,
+    label: `QAOA+ bounded-neighbourhood warm-start via QUDORA (≤${MAX_QAOA_PLUS_WARM_START_STOPS} stops)`,
     kind: 'quantum',
     algorithms: ['or_tools'],
-    description: 'Runs OR-Tools for the operational route, then submits one bounded QAOA+ XY-mixer move-selection circuit to QUDORA. The result is evidence, not a claim of quantum advantage.',
+    description: 'Runs OR-Tools CVRP for the full fleet route, then submits a bounded QAOA+ XY-mixer local-move neighbourhood (at most 8 candidate moves) to QUDORA. The quantum register does not encode all stops.',
   },
   {
     id: 'compare_all',
