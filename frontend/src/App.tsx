@@ -28,6 +28,15 @@ type QuantumConnection = {
   message: string
 }
 
+type QudoraConnection = {
+  status: string
+  env_file_present: boolean
+  token_configured: boolean
+  worker_configured: boolean
+  message: string
+  backends: Array<{ name?: string | null }>
+}
+
 type Metric = {
   label: string
   value: string
@@ -57,6 +66,33 @@ export type RunEvidence = {
   runId: string
   stopsCount: number
   distanceMetric: string | null
+}
+
+export type QuantumWarmStartEvidence = {
+  algorithm: string
+  executor: string
+  backend: string | null
+  jobIds: string[]
+  valid: boolean
+  accepted: boolean
+  acceptanceReason: string | null
+  initialCost: number
+  finalCost: number
+  improvementPercent: number
+  feasibleSampleRate: number | null
+  shots: number | null
+  nQubits: number
+  circuitDepth: number | null
+  error?: string
+}
+
+const haversineMeters = (left: { lat: number; lon: number }, right: { lat: number; lon: number }) => {
+  const radians = (value: number) => value * Math.PI / 180
+  const dLat = radians(right.lat - left.lat)
+  const dLon = radians(right.lon - left.lon)
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(radians(left.lat)) * Math.cos(radians(right.lat)) * Math.sin(dLon / 2) ** 2
+  return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
 // Metric card data for the Operations Overview page.
@@ -91,6 +127,9 @@ type SettingsModalProps = {
   quantumConnection: QuantumConnection | null
   isCheckingQuantumConnection: boolean
   onCheckQuantumConnection: () => void
+  qudoraConnection: QudoraConnection | null
+  isCheckingQudoraConnection: boolean
+  onCheckQudoraConnection: () => void
   onSave: (event: FormEvent<HTMLFormElement>) => void
   onClose: () => void
 }
@@ -123,7 +162,7 @@ function ApplicationHeader({ onOpenSettings }: { onOpenSettings: () => void }) {
   )
 }
 
-function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontScale, onFontScaleChange, quantumConnection, isCheckingQuantumConnection, onCheckQuantumConnection, onSave, onClose }: SettingsModalProps) {
+function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontScale, onFontScaleChange, quantumConnection, isCheckingQuantumConnection, onCheckQuantumConnection, qudoraConnection, isCheckingQudoraConnection, onCheckQudoraConnection, onSave, onClose }: SettingsModalProps) {
   const selected = getSolverOption(solverId)
   return (
     <div className="modal-backdrop" role="presentation">
@@ -200,6 +239,20 @@ function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontSca
               </p>
             )}
           </fieldset>
+          <fieldset className="quantum-connection-settings">
+            <legend>QUDORA Cloud connection</legend>
+            <p>Checks the isolated QUDORA worker, token, and cloud backend discovery. No circuit is submitted. Qamelion and QVLS-Q1 are simulators/emulators, not hardware runs.</p>
+            <button type="button" className="settings-button" onClick={onCheckQudoraConnection} disabled={isCheckingQudoraConnection}>
+              {isCheckingQudoraConnection ? 'Checking QUDORA Cloud…' : 'Check QUDORA Cloud connection'}
+            </button>
+            {qudoraConnection && (
+              <p className={`quantum-connection-status status-${qudoraConnection.status}`} role="status">
+                <strong>{qudoraConnection.status.replaceAll('_', ' ')}</strong> — {qudoraConnection.message}
+                {qudoraConnection.backends.length > 0 && ` Backends: ${qudoraConnection.backends.map((backend) => backend.name).filter(Boolean).join(', ')}.`}
+                {!qudoraConnection.token_configured && ` .env visible: ${qudoraConnection.env_file_present ? 'yes' : 'no'}.`}
+              </p>
+            )}
+          </fieldset>
         </div>
         <p className="settings-solver-hint">{selected.description}</p>
         <div className="settings-actions">
@@ -233,6 +286,8 @@ function App() {
   })
   const [quantumConnection, setQuantumConnection] = useState<QuantumConnection | null>(null)
   const [isCheckingQuantumConnection, setIsCheckingQuantumConnection] = useState(false)
+  const [qudoraConnection, setQudoraConnection] = useState<QudoraConnection | null>(null)
+  const [isCheckingQudoraConnection, setIsCheckingQudoraConnection] = useState(false)
   const [orders, setOrders] = useState<Order[]>(initialOrders)
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles)
   const [currentScreen, setCurrentScreen] = useState<Screen>('overview')
@@ -243,6 +298,7 @@ function App() {
   const [comparisonRows, setComparisonRows] = useState<ComparisonRow[]>([])
   const [runEvidence, setRunEvidence] = useState<RunEvidence | null>(null)
   const [quantumJobs, setQuantumJobs] = useState<QuantumJob[]>([])
+  const [quantumWarmStart, setQuantumWarmStart] = useState<QuantumWarmStartEvidence | null>(null)
   const [optimizeError, setOptimizeError] = useState<string | null>(null)
   const [rerouteAfterStateChange, setRerouteAfterStateChange] = useState(false)
 
@@ -302,6 +358,23 @@ function App() {
     }
   }, [])
 
+  const checkQudoraConnection = useCallback(async () => {
+    setIsCheckingQudoraConnection(true)
+    try {
+      const response = await fetch('/api/v1/quantum/qudora/connection-check', { method: 'POST' })
+      if (!response.ok) throw new Error(`QUDORA connection check failed (${response.status})`)
+      setQudoraConnection(await response.json() as QudoraConnection)
+    } catch (error) {
+      setQudoraConnection({
+        status: 'api_unreachable', env_file_present: false, token_configured: false,
+        worker_configured: false, backends: [],
+        message: error instanceof Error ? error.message : 'Could not reach the QUASAR API.',
+      })
+    } finally {
+      setIsCheckingQudoraConnection(false)
+    }
+  }, [])
+
   const runOptimization = useCallback(async () => {
     setIsOptimizing(true)
     setOptimizeError(null)
@@ -317,6 +390,11 @@ function App() {
       setIsOptimizing(false)
       return
     }
+    if (solver.id === 'qaoa_plus_qudora' && (vehicles.length !== 1 || stops.length > MAX_QAOA_STOPS)) {
+      setOptimizeError(`QAOA+ warm-start evidence is bounded to one vehicle and at most ${MAX_QAOA_STOPS} stops. Use OR-Tools CVRP for the fleet scenario.`)
+      setIsOptimizing(false)
+      return
+    }
 
     const demandById = new globalThis.Map(orders.map((order) => [order.id, Math.max(0, Number(order.weight) || 0)]))
     const payload = {
@@ -329,6 +407,7 @@ function App() {
     }
 
     try {
+      setQuantumWarmStart(null)
       const submit = await fetch('/api/v1/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -398,7 +477,7 @@ function App() {
           } else {
             // A single-vehicle TSP run must render the exact tour returned by
             // the API, rather than the old frontend-only two-truck preview.
-            const mapResult = (statusBody.results || []).find((row) => row.algorithm === 'OR-Tools') || statusBody.results?.[0]
+            const mapResult = (statusBody.results || []).find((row) => row.algorithm.startsWith('OR-Tools')) || statusBody.results?.[0]
             const vehicle = vehicles[0] || { id: 'truck-1', name: 'Truck 1', capacity: '—' }
             applyOptimizedFleetRoutes(mapResult ? [{
               vehicle_id: vehicle.id,
@@ -408,6 +487,58 @@ function App() {
               route: mapResult.tour,
               distance_meters: mapResult.distance_meters,
             }] : [])
+          }
+          if (solver.id === 'qaoa_plus_qudora') {
+            try {
+              const routeSeed = fleetRoutes[0]?.route
+                || (statusBody.results || []).find((row) => row.algorithm.startsWith('OR-Tools'))?.tour
+              if (!routeSeed) throw new Error('OR-Tools did not return a seed route for the QAOA+ warm-start')
+              const locations = [depot, ...stops]
+              const matrix = locations.map((from) => locations.map((to) => haversineMeters(from, to)))
+              const warmStartRes = await fetch('/api/v1/quantum/warm-start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                matrix,
+                demands: [0, ...stops.map((stop) => demandById.get(stop.id) || 0)],
+                capacities: [Number(vehicles[0]?.capacity) || 0],
+                starting_nodes: [0],
+                routes: { 0: routeSeed },
+                problem_type: 'cvrp',
+                executor: 'qudora',
+                qudora_backend: 'Qamelion',
+                shots: 64,
+                maxiter: 8,
+                random_seed: 42,
+              }),
+            })
+              if (!warmStartRes.ok) throw new Error(`QUDORA QAOA+ warm-start failed (${warmStartRes.status})`)
+              const warmStart = await warmStartRes.json() as { result: Record<string, unknown> }
+              const result = warmStart.result
+              setQuantumWarmStart({
+              algorithm: String(result.algorithm || 'QAOA+ XY warm-start'),
+              executor: String(result.executor || 'qudora'),
+              backend: result.backend == null ? null : String(result.backend),
+              jobIds: Array.isArray(result.job_ids) ? result.job_ids.map(String) : [],
+              valid: Boolean(result.valid),
+              accepted: Boolean(result.accepted),
+              acceptanceReason: result.acceptance_reason == null ? null : String(result.acceptance_reason),
+              initialCost: Number(result.initial_cost || 0),
+              finalCost: Number(result.final_cost || 0),
+              improvementPercent: Number(result.improvement_percent || 0),
+              feasibleSampleRate: result.feasible_sample_rate == null ? null : Number(result.feasible_sample_rate),
+              shots: result.shots == null ? null : Number(result.shots),
+              nQubits: Number(result.n_qubits || 0),
+              circuitDepth: result.circuit_depth == null ? null : Number(result.circuit_depth),
+              })
+            } catch (warmStartError) {
+              setQuantumWarmStart({
+                algorithm: 'QAOA+ XY warm-start', executor: 'qudora', backend: null, jobIds: [], valid: false,
+                accepted: false, acceptanceReason: null, initialCost: 0, finalCost: 0, improvementPercent: 0,
+                feasibleSampleRate: null, shots: null, nQubits: 0, circuitDepth: null,
+                error: warmStartError instanceof Error ? warmStartError.message : 'QUDORA warm-start unavailable.',
+              })
+            }
           }
           completed = true
           break
@@ -466,7 +597,7 @@ function App() {
         ])
     setNewStopIds(new Set())
     setOptimizeError(null)
-    if (preset.stops.length > MAX_QAOA_STOPS && getSolverOption(solverId).algorithms.includes('qaoa')) {
+    if (preset.stops.length > MAX_QAOA_STOPS && (getSolverOption(solverId).algorithms.includes('qaoa') || solverId === 'qaoa_plus_qudora')) {
       setSolverId('or_tools')
     }
   }, [replaceStops, solverId])
@@ -483,6 +614,13 @@ function App() {
     setChangeAddressOpen(false)
     setRerouteAfterStateChange(true)
   }
+
+  const handleUpdateStopLocation = useCallback((id: string, name: string, lat: number, lon: number) => {
+    setOrders((currentOrders) => currentOrders.map((order) => (
+      order.id === id ? { ...order, address: name } : order
+    )))
+    updateStopLocation(id, name, lat, lon)
+  }, [updateStopLocation])
 
   const addLiveOrder = useCallback((draft: NewOrderDraft, shouldReRoute: boolean) => {
     const nextNode = Math.max(0, ...orders.map((order) => Number(order.id.replace('N', '')) || 0)) + 1
@@ -638,6 +776,11 @@ function App() {
           onRemoveDeliveryPoint={removePlannerDeliveryPoint}
           onRenameDeliveryPoint={renameStop}
           onApplyDemoPreset={applyDemoPreset}
+          depot={depot}
+          stops={stops}
+          truckRoutes={truckRoutes}
+          onUpdateStopLocation={handleUpdateStopLocation}
+          onMapClick={handleMapClick}
         />
       )}
       {currentScreen === 'results' && (
@@ -653,6 +796,7 @@ function App() {
           solverLabel={selectedSolver.label}
           comparisonRows={comparisonRows}
           quantumJobs={quantumJobs}
+          quantumWarmStart={quantumWarmStart}
           runEvidence={runEvidence}
           optimizeError={optimizeError}
         />
@@ -696,6 +840,9 @@ function App() {
           quantumConnection={quantumConnection}
           isCheckingQuantumConnection={isCheckingQuantumConnection}
           onCheckQuantumConnection={() => { void checkQuantumConnection() }}
+          qudoraConnection={qudoraConnection}
+          isCheckingQudoraConnection={isCheckingQudoraConnection}
+          onCheckQudoraConnection={() => { void checkQudoraConnection() }}
           onSave={handleSaveSettings}
           onClose={() => setSettingsOpen(false)}
         />

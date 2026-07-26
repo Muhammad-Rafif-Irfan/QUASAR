@@ -101,6 +101,21 @@ export function getDemoPreset(id: DemoPresetId): DemoPreset {
   return preset
 }
 
+export const ALL_AVAILABLE_LOCATIONS: { name: string; lat: number; lon: number }[] = [
+  { name: 'Pleiku Airport', lat: 14.0044240, lon: 108.0135476 },
+  { name: 'Biển Hồ Pleiku', lat: 14.0468591, lon: 107.9960066 },
+  { name: 'Chùa Minh Đạo, Diên Phú', lat: 13.9569300, lon: 107.9828185 },
+  { name: 'Đại học Nông Lâm TP. Hồ Chí Minh – Gia Lai', lat: 13.9692560, lon: 108.0200740 },
+  { name: 'Quảng trường Đại Đoàn Kết', lat: 13.9786630, lon: 108.0103610 },
+  { name: 'Bệnh viện Đại học Y Dược Hoàng Anh Gia Lai', lat: 13.9823900, lon: 108.0007150 },
+  { name: 'Chợ Pleiku', lat: 13.9820590, lon: 108.0034030 },
+  { name: 'Công viên Diên Hồng', lat: 13.9739680, lon: 108.0054850 },
+  { name: 'Quy Nhon University', lat: 13.7593966, lon: 109.2172639 },
+  { name: 'Binh Dinh Conference Center', lat: 13.7731162, lon: 109.2217008 },
+  { name: 'Quy Nhon city centre', lat: 13.7549672, lon: 109.1767596 },
+  { name: 'ICISE Center, Quy Nhon (QC4SG venue)', lat: 13.7013, lon: 109.1837 },
+]
+
 /** Extra location pool for dynamically added orders. */
 const EXTRA_LOCATIONS: { name: string; lat: number; lon: number }[] = [
   { name: 'Quy Nhon University', lat: 13.7593966, lon: 109.2172639 },

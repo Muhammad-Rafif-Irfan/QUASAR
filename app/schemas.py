@@ -224,7 +224,7 @@ class QuantumWarmStartRequest(BaseModel):
     routes: Dict[str, List[int]] = Field(..., min_length=1, max_length=4)
     deliveries: List[WarmStartDeliveryAssignment] = Field(default_factory=list, max_length=64)
     problem_type: Literal["cvrp", "sdvrp"] = "cvrp"
-    executor: Literal["classical", "local"] = "local"
+    executor: Literal["classical", "local", "qudora"] = "local"
     reps: int = Field(default=1, ge=1, le=2)
     maxiter: int = Field(default=20, ge=1, le=40)
     shots: int = Field(default=512, ge=16, le=2048)
@@ -234,6 +234,11 @@ class QuantumWarmStartRequest(BaseModel):
     random_seed: int = Field(default=42, ge=0, le=2_147_483_647)
     initialization: Literal["no-op", "w-state"] = "w-state"
     xy_topology: Literal["ring", "full", "star"] = "ring"
+    qudora_backend: Literal["Qamelion", "QVLS-Q1 Emulator"] = "Qamelion"
+    qudora_timeout_seconds: int = Field(default=60, ge=1, le=90)
+    measurement_error_probability: Optional[float] = Field(default=None, ge=0, le=1)
+    two_qubit_gate_noise_strength: Optional[float] = Field(default=None, ge=0, le=1)
+    single_qubit_gate_noise_strength: Optional[float] = Field(default=None, ge=0, le=1)
 
     @model_validator(mode="after")
     def warm_start_shape_must_be_small_and_consistent(self):
@@ -257,3 +262,12 @@ class QuantumWarmStartResponse(BaseModel):
 
     mode: Literal["experimental_quantum_warm_start"] = "experimental_quantum_warm_start"
     result: Dict[str, Any]
+
+
+class QudoraConnectionResponse(BaseModel):
+    status: str
+    env_file_present: bool
+    token_configured: bool
+    worker_configured: bool
+    message: str
+    backends: List[Dict[str, Optional[str]]] = Field(default_factory=list)

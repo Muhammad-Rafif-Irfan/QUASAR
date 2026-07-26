@@ -37,6 +37,13 @@ export const SOLVER_OPTIONS: SolverOption[] = [
     description: `Verified small-instance QAOA: phase separator encodes actual route costs; limited to ${MAX_QAOA_STOPS} stops.`,
   },
   {
+    id: 'qaoa_plus_qudora',
+    label: `QAOA+ XY warm-start via QUDORA (≤${MAX_QAOA_STOPS} stops)`,
+    kind: 'quantum',
+    algorithms: ['or_tools'],
+    description: 'Runs OR-Tools for the operational route, then submits one bounded QAOA+ XY-mixer move-selection circuit to QUDORA. The result is evidence, not a claim of quantum advantage.',
+  },
+  {
     id: 'compare_all',
     label: 'Compare verified solvers',
     kind: 'hybrid',

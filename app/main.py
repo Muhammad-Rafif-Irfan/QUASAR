@@ -26,6 +26,7 @@ import app.models as models
 import app.schemas as schemas
 from app.services.quantum_driver import run_optimization_pipeline
 from app.services.quantum_hybrid.warm_start import run_quasar_qaoa_xy_hybrid
+from app.services.quantum_hybrid.qudora import check_connection as check_qudora_connection
 
 # Middleware — Security, Rate Limiting, Observability
 from app.middleware.security import (
@@ -287,6 +288,16 @@ def check_quantum_connection():
         )
 
 
+@app.post(
+    "/api/v1/quantum/qudora/connection-check",
+    response_model=schemas.QudoraConnectionResponse,
+    status_code=status.HTTP_200_OK,
+)
+def check_qudora_cloud_connection():
+    """Read-only QUDORA backend discovery through the isolated SDK worker."""
+    return schemas.QudoraConnectionResponse(**check_qudora_connection())
+
+
 @app.get(
     "/api/v1/inspect",
     response_model=schemas.InspectResponse,
@@ -370,6 +381,7 @@ def inspect_runtime(db: Session = Depends(get_db)):
             "GET /health",
             "GET /api/v1/inspect",
             "POST /api/v1/quantum/connection-check",
+            "POST /api/v1/quantum/qudora/connection-check",
             "POST /api/v1/quantum/warm-start",
             "POST /api/v1/optimize",
             "GET /api/v1/optimize/{run_id}",
@@ -467,6 +479,20 @@ def run_quantum_warm_start(
     """
     payload = request.model_dump()
     payload["deliveries"] = [item.model_dump() for item in request.deliveries]
+    if request.executor == "qudora":
+        payload["runtime_options"] = {
+            "backend_name": request.qudora_backend,
+            "timeout_seconds": request.qudora_timeout_seconds,
+            **{
+                key: value
+                for key, value in {
+                    "measurement_error_probability": request.measurement_error_probability,
+                    "two_qubit_gate_noise_strength": request.two_qubit_gate_noise_strength,
+                    "single_qubit_gate_noise_strength": request.single_qubit_gate_noise_strength,
+                }.items()
+                if value is not None
+            },
+        }
     try:
         result = run_quasar_qaoa_xy_hybrid(payload)
     except (TypeError, ValueError) as error:

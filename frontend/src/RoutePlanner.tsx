@@ -1,7 +1,8 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { ArrowLeft, PackageCheck, Plus, Trash2, Truck, Upload } from 'lucide-react'
 import { SOLVER_OPTIONS, getSolverOption } from './solvers'
-import { demoPresets, type DemoPresetId } from './useRouteSimulation'
+import { demoPresets, type DemoPresetId, ALL_AVAILABLE_LOCATIONS, type MapLocation, type TruckRoute } from './useRouteSimulation'
+import LiveMap from './LiveMap'
 
 export type Order = {
   id: string
@@ -32,6 +33,11 @@ type RoutePlannerProps = {
   onRemoveDeliveryPoint: (id: string) => void
   onRenameDeliveryPoint: (id: string, name: string) => void
   onApplyDemoPreset: (id: DemoPresetId) => void
+  depot: MapLocation
+  stops: MapLocation[]
+  truckRoutes: TruckRoute[]
+  onUpdateStopLocation: (id: string, name: string, lat: number, lon: number) => void
+  onMapClick: (latlng: { lat: number; lon: number }) => void
 }
 
 export const initialOrders: Order[] = [
@@ -59,10 +65,30 @@ function RoutePlanner({
   onRemoveDeliveryPoint,
   onRenameDeliveryPoint,
   onApplyDemoPreset,
+  depot,
+  stops,
+  truckRoutes,
+  onUpdateStopLocation,
+  onMapClick,
 }: RoutePlannerProps) {
   const totalDemand = orders.reduce((total, order) => total + (Number(order.weight) || 0), 0)
   const totalCapacity = vehicles.reduce((total, vehicle) => total + (Number(vehicle.capacity) || 0), 0)
   const selectedSolver = getSolverOption(solverId)
+
+  const handleAddressChange = (id: string, addressName: string) => {
+    const loc = ALL_AVAILABLE_LOCATIONS.find((l) => l.name === addressName)
+    if (loc) {
+      onUpdateStopLocation(id, loc.name, loc.lat, loc.lon)
+    }
+  }
+
+  const getAddressOptions = (currentAddress: string) => {
+    const exists = ALL_AVAILABLE_LOCATIONS.some((l) => l.name === currentAddress)
+    if (exists || !currentAddress) {
+      return ALL_AVAILABLE_LOCATIONS
+    }
+    return [...ALL_AVAILABLE_LOCATIONS, { name: currentAddress, lat: 0, lon: 0 }]
+  }
 
   const updateOrder = (id: string, field: keyof Order, value: string) => {
     setOrders((currentOrders) => currentOrders.map((order) => (
@@ -116,61 +142,92 @@ function RoutePlanner({
         </div>
 
         <section className="planner-grid">
-          <article className="panel planner-panel">
-            <div className="planner-panel-heading">
-              <div>
-                <p className="section-label">Order data</p>
-                <h2>Delivery points</h2>
-              </div>
-              <PackageCheck size={17} />
-            </div>
-            <div className="planner-table planner-orders" role="table" aria-label="Order data">
-              <div className="planner-table-head" role="row">
-                <span>Node</span><span>Address</span><span>Weight</span><span>Start</span><span>End</span><span aria-label="Actions" />
-              </div>
-              {orders.map((order) => (
-                <div className="planner-table-row" role="row" key={order.id}>
-                  <strong>{order.id}</strong>
-                  <input aria-label={`${order.id} address`} placeholder="Address / location" value={order.address} onChange={(event) => updateOrder(order.id, 'address', event.target.value)} />
-                  <label>
-                    <input aria-label={`${order.id} package weight`} type="number" min="0" value={order.weight} onChange={(event) => updateOrder(order.id, 'weight', event.target.value)} />
-                    <span>kg</span>
-                  </label>
-                  <input aria-label={`${order.id} time-window start`} type="time" value={order.startTime} onChange={(event) => updateOrder(order.id, 'startTime', event.target.value)} />
-                  <input aria-label={`${order.id} time-window end`} type="time" value={order.endTime} onChange={(event) => updateOrder(order.id, 'endTime', event.target.value)} />
-                  <button type="button" className="row-remove" onClick={() => removeOrder(order.id)} aria-label={`Remove ${order.id}`}><Trash2 size={15} /></button>
+          <div className="planner-config-col">
+            <article className="panel planner-panel">
+              <div className="planner-panel-heading">
+                <div>
+                  <p className="section-label">Order data</p>
+                  <h2>Delivery points</h2>
                 </div>
-              ))}
-            </div>
-            <div className="planner-panel-actions">
-              <button type="button" className="settings-button" onClick={onAddDeliveryPoint}><Plus size={15} /> Add delivery point</button>
-              <button type="button" className="settings-button"><Upload size={15} /> Import order CSV</button>
-            </div>
-          </article>
+                <PackageCheck size={17} />
+              </div>
+              <div className="planner-table planner-orders" role="table" aria-label="Order data">
+                <div className="planner-table-head" role="row">
+                  <span>Node</span><span>Address</span><span>Weight</span><span>Start</span><span>End</span><span aria-label="Actions" />
+                </div>
+                {orders.map((order) => (
+                  <div className="planner-table-row" role="row" key={order.id}>
+                    <strong>{order.id}</strong>
+                    <select
+                      aria-label={`${order.id} address`}
+                      value={order.address || ""}
+                      onChange={(event) => handleAddressChange(order.id, event.target.value)}
+                    >
+                      <option value="" disabled>Select address...</option>
+                      {getAddressOptions(order.address).map((loc) => (
+                        <option key={loc.name} value={loc.name}>
+                          {loc.name}
+                        </option>
+                      ))}
+                    </select>
+                    <label>
+                      <input aria-label={`${order.id} package weight`} type="number" min="0" value={order.weight} onChange={(event) => updateOrder(order.id, 'weight', event.target.value)} />
+                      <span>kg</span>
+                    </label>
+                    <input aria-label={`${order.id} time-window start`} type="time" value={order.startTime} onChange={(event) => updateOrder(order.id, 'startTime', event.target.value)} />
+                    <input aria-label={`${order.id} time-window end`} type="time" value={order.endTime} onChange={(event) => updateOrder(order.id, 'endTime', event.target.value)} />
+                    <button type="button" className="row-remove" onClick={() => removeOrder(order.id)} aria-label={`Remove ${order.id}`}><Trash2 size={15} /></button>
+                  </div>
+                ))}
+              </div>
+              <div className="planner-panel-actions">
+                <button type="button" className="settings-button" onClick={onAddDeliveryPoint}><Plus size={15} /> Add delivery point</button>
+                <button type="button" className="settings-button"><Upload size={15} /> Import order CSV</button>
+              </div>
+            </article>
 
-          <article className="panel planner-panel">
+            <article className="panel planner-panel">
+              <div className="planner-panel-heading">
+                <div>
+                  <p className="section-label">Fleet data</p><h2>Available vehicles</h2>
+                </div>
+                <Truck size={17} />
+              </div>
+              <div className="planner-table planner-vehicles" role="table" aria-label="Fleet data">
+                <div className="planner-table-head" role="row"><span>Vehicle</span><span>Capacity</span><span aria-label="Actions" /></div>
+                {vehicles.map((vehicle) => (
+                  <div className="planner-table-row" role="row" key={vehicle.id}>
+                    <input aria-label={`${vehicle.name} name`} value={vehicle.name} onChange={(event) => updateVehicle(vehicle.id, 'name', event.target.value)} />
+                    <label>
+                      <input aria-label={`${vehicle.name} capacity`} type="number" min="0" value={vehicle.capacity} onChange={(event) => updateVehicle(vehicle.id, 'capacity', event.target.value)} />
+                      <span>kg</span>
+                    </label>
+                    <button type="button" className="row-remove" onClick={() => removeVehicle(vehicle.id)} aria-label={`Remove ${vehicle.name}`}><Trash2 size={15} /></button>
+                  </div>
+                ))}
+              </div>
+              <div className="planner-panel-actions">
+                <button type="button" className="settings-button" onClick={addVehicle}><Plus size={15} /> Add vehicle</button>
+                <button type="button" className="settings-button"><Upload size={15} /> Import vehicle CSV</button>
+              </div>
+            </article>
+          </div>
+
+          <article className="panel planner-panel planner-map-panel">
             <div className="planner-panel-heading">
               <div>
-                <p className="section-label">Fleet data</p><h2>Available vehicles</h2>
+                <p className="section-label">Visual planning</p>
+                <h2>Route setup map</h2>
               </div>
-              <Truck size={17} />
             </div>
-            <div className="planner-table planner-vehicles" role="table" aria-label="Fleet data">
-              <div className="planner-table-head" role="row"><span>Vehicle</span><span>Capacity</span><span aria-label="Actions" /></div>
-              {vehicles.map((vehicle) => (
-                <div className="planner-table-row" role="row" key={vehicle.id}>
-                  <input aria-label={`${vehicle.name} name`} value={vehicle.name} onChange={(event) => updateVehicle(vehicle.id, 'name', event.target.value)} />
-                  <label>
-                    <input aria-label={`${vehicle.name} capacity`} type="number" min="0" value={vehicle.capacity} onChange={(event) => updateVehicle(vehicle.id, 'capacity', event.target.value)} />
-                    <span>kg</span>
-                  </label>
-                  <button type="button" className="row-remove" onClick={() => removeVehicle(vehicle.id)} aria-label={`Remove ${vehicle.name}`}><Trash2 size={15} /></button>
-                </div>
-              ))}
-            </div>
-            <div className="planner-panel-actions">
-              <button type="button" className="settings-button" onClick={addVehicle}><Plus size={15} /> Add vehicle</button>
-              <button type="button" className="settings-button"><Upload size={15} /> Import vehicle CSV</button>
+            <div className="planner-map-wrapper">
+              <LiveMap
+                depot={depot}
+                stops={stops}
+                truckRoutes={[]}
+                isLive={false}
+                onMapClick={onMapClick}
+              />
             </div>
           </article>
         </section>

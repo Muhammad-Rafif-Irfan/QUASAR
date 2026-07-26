@@ -26,7 +26,7 @@ from .hamiltonian import (
 )
 
 ProblemType = Literal["cvrp", "sdvrp"]
-Executor = Literal["classical", "local", "ibm"]
+Executor = Literal["classical", "local", "ibm", "qudora"]
 XYTopology = Literal["ring", "full", "star"]
 Initialization = Literal["no-op", "w-state"]
 SamplePolicy = Literal[
@@ -1457,6 +1457,51 @@ def _run_local_qaoa(
     )
 
 
+def _run_qudora_qaoa(
+    ansatz: Any,
+    parameter_order: Sequence[Any],
+    normalized_operator: Any,
+    *,
+    reps: int,
+    maxiter: int,
+    shots: int,
+    random_seed: int,
+    runtime_options: Mapping[str, Any] | None,
+) -> QuantumExecutionResult:
+    """Optimise locally, then submit one bound OpenQASM 2 circuit to QUDORA."""
+    from qiskit import qasm2, transpile
+    from .qudora import run_bound_qasm2
+
+    local_result = _run_local_qaoa(
+        ansatz, parameter_order, normalized_operator, reps=reps,
+        maxiter=maxiter, shots=shots, random_seed=random_seed,
+    )
+    bound = _bind_parameters(ansatz, parameter_order, local_result.optimizer_parameters)
+    measured = bound.copy()
+    measured.measure_all()
+    # QUDORA's isolated SDK currently uses Qiskit 2.1.  Export only portable
+    # OpenQASM 2 gates; otherwise Qiskit 2.4 may emit gates such as ``sxdg``
+    # that its parser does not recognise.  QUDORA's Qiskit 2.1 parser accepts
+    # ``u3`` (not Qiskit 2.4's newer ``u`` alias) and ``cx``.
+    portable = transpile(measured, basis_gates=["u3", "cx"], optimization_level=0)
+    remote = run_bound_qasm2(
+        qasm2.dumps(portable), shots=shots, runtime_options=runtime_options,
+    )
+    return QuantumExecutionResult(
+        counts={str(key): int(value) for key, value in remote["counts"].items()},
+        optimizer_parameters=local_result.optimizer_parameters,
+        optimizer_history=local_result.optimizer_history,
+        optimizer_evaluations=local_result.optimizer_evaluations,
+        backend=str(remote.get("backend") or "QUDORA"),
+        job_ids=tuple(str(job_id) for job_id in remote.get("job_ids", [])),
+        circuit_depth=int(portable.depth()),
+        two_qubit_gate_count=int(sum(
+            int(value) for name, value in portable.count_ops().items()
+            if str(name) in {"cx", "cz", "rxx", "ryy", "rzz", "swap"}
+        )),
+    )
+
+
 def _extract_estimator_value(result: Any) -> float:
     public_result = result[0]
     data = public_result.data
@@ -2024,8 +2069,8 @@ def parse_hybrid_config(payload: Mapping[str, Any]) -> HybridConfig:
             "never through an algorithm payload."
         )
     executor = str(payload.get("executor", "local")).lower()
-    if executor not in {"classical", "local", "ibm"}:
-        raise ValueError("executor must be 'classical', 'local', or 'ibm'.")
+    if executor not in {"classical", "local", "ibm", "qudora"}:
+        raise ValueError("executor must be 'classical', 'local', 'ibm', or 'qudora'.")
     initialization = str(payload.get("initialization", "no-op")).lower()
     if initialization not in {"no-op", "w-state"}:
         raise ValueError("initialization must be 'no-op' or 'w-state'.")
@@ -2296,7 +2341,7 @@ def run_quasar_qaoa_xy_hybrid(
                     shots=config.shots,
                     random_seed=config.random_seed,
                 )
-            else:
+            elif config.executor == "ibm":
                 quantum_result = _run_ibm_qaoa(
                     ansatz,
                     parameter_order,
@@ -2305,6 +2350,12 @@ def run_quasar_qaoa_xy_hybrid(
                     maxiter=config.maxiter,
                     shots=config.shots,
                     runtime_options=config.runtime_options,
+                )
+            else:
+                quantum_result = _run_qudora_qaoa(
+                    ansatz, parameter_order, normalized_operator,
+                    reps=config.reps, maxiter=config.maxiter, shots=config.shots,
+                    random_seed=config.random_seed, runtime_options=config.runtime_options,
                 )
             analyses = analyze_samples(
                 quantum_result.counts,

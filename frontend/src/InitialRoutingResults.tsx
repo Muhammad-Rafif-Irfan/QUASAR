@@ -1,6 +1,7 @@
 import LiveMap from './LiveMap'
 import type { MapLocation, TruckRoute } from './useRouteSimulation'
 import type { RunEvidence } from './App'
+import type { QuantumWarmStartEvidence } from './App'
 
 export type ComparisonRow = {
   algorithm: string
@@ -30,6 +31,7 @@ type InitialRoutingResultsProps = {
   solverLabel: string
   comparisonRows: ComparisonRow[]
   quantumJobs: QuantumJob[]
+  quantumWarmStart: QuantumWarmStartEvidence | null
   optimizeError: string | null
   runEvidence: RunEvidence | null
 }
@@ -46,6 +48,7 @@ function InitialRoutingResults({
   solverLabel,
   comparisonRows,
   quantumJobs,
+  quantumWarmStart,
   optimizeError,
   runEvidence,
 }: InitialRoutingResultsProps) {
@@ -124,6 +127,36 @@ function InitialRoutingResults({
               ? 'All displayed solvers found the same valid route cost on this tiny instance. This is expected for a three-stop demo and is not evidence of quantum advantage.'
               : 'Distances differ on this instance. Compare route validity, distance, and execution time; do not treat a single run as evidence of quantum advantage.'}
           </p>
+        </section>
+      )}
+
+      {quantumWarmStart && (
+        <section className="panel quantum-warm-start-panel" aria-label="QAOA plus warm-start evidence">
+          <div className="panel-heading">
+            <div>
+              <p className="section-label">Quantum evidence run</p>
+              <h2>QAOA+ XY-mixer warm-start</h2>
+            </div>
+            <span className={quantumWarmStart.error ? 'warm-start-badge is-invalid' : 'warm-start-badge is-valid'}>
+              {quantumWarmStart.error ? 'Unavailable' : quantumWarmStart.accepted ? 'Accepted move' : 'No improving move'}
+            </span>
+          </div>
+          <p className="quantum-evidence-copy">
+            OR-Tools produced the operational seed route. QAOA+ then evaluated a bounded local move using a constraint-aware XY mixer on QUDORA; it does not replace the CVRP route solver.
+          </p>
+          {quantumWarmStart.error ? (
+            <p className="optimize-warning" role="status">{quantumWarmStart.error}. The verified OR-Tools route remains available.</p>
+          ) : (
+            <div className="warm-start-grid">
+              <span><small>Backend</small><strong>{quantumWarmStart.backend ?? 'QUDORA'}</strong></span>
+              <span><small>Cloud job</small><code>{quantumWarmStart.jobIds[0] ?? 'unavailable'}</code></span>
+              <span><small>Move cost</small><strong>{quantumWarmStart.initialCost.toFixed(2)} → {quantumWarmStart.finalCost.toFixed(2)}</strong></span>
+              <span><small>Feasible samples</small><strong>{quantumWarmStart.feasibleSampleRate == null ? '—' : `${(quantumWarmStart.feasibleSampleRate * 100).toFixed(1)}%`}</strong></span>
+              <span><small>Circuit</small><strong>{quantumWarmStart.nQubits} qubits · depth {quantumWarmStart.circuitDepth ?? '—'}</strong></span>
+              <span><small>Execution</small><strong>{quantumWarmStart.shots ?? '—'} shots · {quantumWarmStart.valid ? 'valid' : 'invalid'}</strong></span>
+            </div>
+          )}
+          <p className="data-provenance">This is a small, traceable feasibility experiment. It demonstrates quantum readiness and constraint-preserving sampling, not a general quantum-speedup claim.</p>
         </section>
       )}
 
