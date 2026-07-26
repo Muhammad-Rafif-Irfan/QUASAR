@@ -62,6 +62,7 @@ export type RunEvidence = {
   distanceMetric: string | null
   solverLabel: string
   quantumRequested: boolean
+  vehiclesUsed: number
 }
 
 export type QuantumWarmStartEvidence = {
@@ -110,6 +111,8 @@ type SettingsModalProps = {
   qudoraConnection: QudoraConnection | null
   isCheckingQudoraConnection: boolean
   onCheckQudoraConnection: () => void
+  onClearAppData: () => void
+  isClearingAppData: boolean
   onSave: (event: FormEvent<HTMLFormElement>) => void
   onClose: () => void
 }
@@ -142,7 +145,7 @@ function ApplicationHeader({ onOpenSettings, onGoHome }: { onOpenSettings: () =>
   )
 }
 
-function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontScale, onFontScaleChange, quantumConnection, isCheckingQuantumConnection, onCheckQuantumConnection, qudoraConnection, isCheckingQudoraConnection, onCheckQudoraConnection, onSave, onClose }: SettingsModalProps) {
+function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontScale, onFontScaleChange, quantumConnection, isCheckingQuantumConnection, onCheckQuantumConnection, qudoraConnection, isCheckingQudoraConnection, onCheckQudoraConnection, onClearAppData, isClearingAppData, onSave, onClose }: SettingsModalProps) {
   const selected = getSolverOption(solverId)
   return (
     <div className="modal-backdrop" role="presentation">
@@ -233,6 +236,13 @@ function SettingsModal({ solverId, onSolverChange, theme, onThemeChange, fontSca
               </p>
             )}
           </fieldset>
+          <fieldset className="danger-zone-settings">
+            <legend>Danger zone</legend>
+            <p>Permanently deletes every saved benchmark run, result, and quantum job trace from this app. This cannot be undone.</p>
+            <button type="button" className="danger-button" onClick={onClearAppData} disabled={isClearingAppData}>
+              {isClearingAppData ? 'Clearing app data…' : 'Clear all app data'}
+            </button>
+          </fieldset>
         </div>
         <p className="settings-solver-hint">{selected.description}</p>
         <div className="settings-actions">
@@ -287,6 +297,7 @@ function App() {
   const [optimizeError, setOptimizeError] = useState<string | null>(null)
   const [rerouteAfterStateChange, setRerouteAfterStateChange] = useState(false)
   const [pendingRestoredFleetRoutes, setPendingRestoredFleetRoutes] = useState<OptimizedFleetRoute[] | null>(null)
+  const [isClearingAppData, setIsClearingAppData] = useState(false)
 
   const {
     depot,
@@ -313,16 +324,20 @@ function App() {
     ), 0),
     color: route.color,
   }))
-  const maxRoutePreviewDistance = Math.max(...routePreviewDistances.map((route) => route.meters), 1)
-  const routePreviewChartPoints = routePreviewDistances.map((route, index) => ({
-    ...route,
-    x: routePreviewDistances.length === 1 ? 350 : 34 + (index * 632) / (routePreviewDistances.length - 1),
-    y: 210 - (route.meters / maxRoutePreviewDistance) * 160,
-  }))
+  let cumulativePreviewDistance = 0
+  const cumulativeRoutePreviewPoints = routePreviewDistances.map((route, index) => {
+    cumulativePreviewDistance += route.meters
+    return {
+      ...route,
+      cumulativeMeters: cumulativePreviewDistance,
+      x: routePreviewDistances.length === 1 ? 350 : 34 + (index * 632) / (routePreviewDistances.length - 1),
+    }
+  })
+  const maxCumulativePreviewDistance = Math.max(...cumulativeRoutePreviewPoints.map((route) => route.cumulativeMeters), 1)
   const overviewMetrics: Metric[] = [
     {
       label: 'Vehicles in latest run',
-      value: runEvidence ? String(truckRoutes.length) : '—',
+      value: runEvidence ? String(runEvidence.vehiclesUsed) : '—',
       unit: runEvidence ? `/${vehicles.length}` : undefined,
       detail: runEvidence ? 'assigned by the verified API result' : 'run an optimization to populate this card',
       emphasis: runEvidence ? 'Verified' : 'No run yet',
@@ -381,7 +396,7 @@ function App() {
           distance_metric?: string | null
           stops: Array<{ name: string; lat: number; lon: number; demand: number }>
           fleet_routes: OptimizedFleetRoute[]
-          results: Array<{ algorithm: string; distance_meters: number; execution_time_ms: number; is_valid: boolean; approximation_ratio?: number | null }>
+          results: Array<{ algorithm: string; tour: number[]; distance_meters: number; execution_time_ms: number; is_valid: boolean; approximation_ratio?: number | null }>
           quantum_jobs: QuantumJob[]
         }
         if (cancelled) return
@@ -390,9 +405,15 @@ function App() {
           replaceStops(restoredStops)
           setOrders(latest.stops.map((stop, index) => ({ id: `N${index + 1}`, address: stop.name, weight: String(stop.demand), startTime: '09:00', endTime: '17:00' })))
         }
-        if (latest.fleet_routes.length > 0) {
-          setVehicles(latest.fleet_routes.map((route) => ({ id: route.vehicle_id, name: route.vehicle_name, capacity: String(route.capacity) })))
-          setPendingRestoredFleetRoutes(latest.fleet_routes)
+        const restoredFleetRoutes = latest.fleet_routes.length > 0
+          ? latest.fleet_routes
+          : (() => {
+              const seed = latest.results.find((row) => row.algorithm.startsWith('OR-Tools')) || latest.results[0]
+              return seed ? [{ vehicle_id: 'truck-1', vehicle_name: 'Truck 1', capacity: 100, load: latest.stops.reduce((total, stop) => total + stop.demand, 0), route: seed.tour, distance_meters: seed.distance_meters }] : []
+            })()
+        if (restoredFleetRoutes.length > 0) {
+          setVehicles(restoredFleetRoutes.map((route) => ({ id: route.vehicle_id, name: route.vehicle_name, capacity: String(route.capacity) })))
+          setPendingRestoredFleetRoutes(restoredFleetRoutes)
         }
         setComparisonRows(latest.results.map((row) => ({
           algorithm: row.algorithm,
@@ -411,6 +432,7 @@ function App() {
           distanceMetric: latest.distance_metric ?? null,
           solverLabel: restoredSolverLabel,
           quantumRequested: latest.quantum_jobs.length > 0,
+          vehiclesUsed: restoredFleetRoutes.length,
         })
       } catch {
         // A dashboard must remain usable when the optional historical restore is unavailable.
@@ -436,6 +458,40 @@ function App() {
     event.preventDefault()
     setSettingsOpen(false)
   }
+
+  const clearAppData = useCallback(async () => {
+    if (!window.confirm('Clear every saved run, result, and quantum job trace? This cannot be undone.')) return
+    if (window.prompt('Type DELETE to permanently clear app data.') !== 'DELETE') return
+    setIsClearingAppData(true)
+    try {
+      const response = await fetch('/api/v1/app-data', {
+        method: 'DELETE',
+        headers: { 'X-Confirm-Reset': 'DELETE_ALL_APP_DATA' },
+      })
+      if (!response.ok) throw new Error(`Clear app data failed (${response.status})`)
+      setComparisonRows([])
+      setQuantumJobs([])
+      setQuantumWarmStart(null)
+      setRunEvidence(null)
+      setOptimizeError(null)
+      setPendingRestoredFleetRoutes(null)
+      setOrders(initialOrders)
+      setVehicles(initialVehicles)
+      replaceStops(getDemoPreset('quantum-3').stops.map(({ weight: _weight, startTime: _startTime, endTime: _endTime, ...stop }) => stop))
+      setNewStopIds(new Set())
+      localStorage.removeItem('quasar-theme')
+      localStorage.removeItem('quasar-font-scale')
+      setTheme('light')
+      setFontScale('standard')
+      setSolverId(DEFAULT_SOLVER_ID)
+      setSettingsOpen(false)
+      setCurrentScreen('overview')
+    } catch (error) {
+      setOptimizeError(error instanceof Error ? error.message : 'Could not clear app data.')
+    } finally {
+      setIsClearingAppData(false)
+    }
+  }, [replaceStops])
 
   const checkQuantumConnection = useCallback(async () => {
     setIsCheckingQuantumConnection(true)
@@ -580,6 +636,7 @@ function App() {
             distanceMetric: statusBody.distance_metric ?? null,
             solverLabel: solver.label,
             quantumRequested: solver.algorithms.includes('qaoa') || solver.id === 'qaoa_plus_qudora',
+            vehiclesUsed: (statusBody.fleet_routes || []).length || 1,
           })
           const fleetRoutes = statusBody.fleet_routes || []
           if (fleetRoutes.length > 0) {
@@ -816,24 +873,24 @@ function App() {
                 <div className="panel-heading">
                   <div>
                     <p className="section-label">Latest route geometry</p>
-                    <h2>Route allocation by vehicle</h2>
+                    <h2>Cumulative route preview by vehicle</h2>
                   </div>
                 </div>
                 {runEvidence && routePreviewDistances.length > 0 ? (
                   <>
-                    <div className="history-chart" role="img" aria-label="Map route-preview distance by vehicle in the latest verified run">
+                    <div className="history-chart" role="img" aria-label="Cumulative map route-preview distance in vehicle dispatch order for the latest verified run">
                       <svg viewBox="0 0 700 230" preserveAspectRatio="none" aria-hidden="true">
                         <line x1="24" y1="30" x2="676" y2="30" />
                         <line x1="24" y1="90" x2="676" y2="90" />
                         <line x1="24" y1="150" x2="676" y2="150" />
                         <line x1="24" y1="210" x2="676" y2="210" />
-                        {routePreviewChartPoints.length === 1 && <line className="delivery-line" x1="84" y1={routePreviewChartPoints[0].y} x2="616" y2={routePreviewChartPoints[0].y} />}
-                        <polyline className="delivery-line" points={routePreviewChartPoints.map((point) => `${point.x},${point.y}`).join(' ')} />
-                        {routePreviewChartPoints.map((point) => <circle className="delivery-point" cx={point.x} cy={point.y} r="2.8" key={point.label} />)}
+                        {cumulativeRoutePreviewPoints.length === 1 && <line className="delivery-line" x1="84" y1={210 - (cumulativeRoutePreviewPoints[0].cumulativeMeters / maxCumulativePreviewDistance) * 160} x2="616" y2={210 - (cumulativeRoutePreviewPoints[0].cumulativeMeters / maxCumulativePreviewDistance) * 160} />}
+                        <polyline className="delivery-line" points={cumulativeRoutePreviewPoints.map((point) => `${point.x},${210 - (point.cumulativeMeters / maxCumulativePreviewDistance) * 160}`).join(' ')} />
+                        {cumulativeRoutePreviewPoints.map((point) => <circle className="delivery-point" cx={point.x} cy={210 - (point.cumulativeMeters / maxCumulativePreviewDistance) * 160} r="2.8" key={point.label} />)}
                       </svg>
-                      <div className="chart-labels">{routePreviewChartPoints.map((point) => <span key={point.label}>{point.label}</span>)}</div>
+                      <div className="chart-labels">{cumulativeRoutePreviewPoints.map((point) => <span key={point.label}>{point.label}</span>)}</div>
                     </div>
-                    <div className="chart-legend"><span><i className="delivery-key" /> Map route preview distance: {routePreviewChartPoints.map((point) => `${point.label} ${(point.meters / 1000).toFixed(2)} km`).join(' · ')}</span></div>
+                    <div className="chart-legend"><span><i className="delivery-key" /> Cumulative map-preview distance: {cumulativeRoutePreviewPoints.map((point) => `${point.label} ${(point.cumulativeMeters / 1000).toFixed(2)} km`).join(' · ')}</span></div>
                   </>
                 ) : (
                   <div className="empty-state overview-empty-state" role="status"><Map size={20} /><div><h2>No verified route yet</h2><p>Load a demo scenario in Route Planner, then run optimization to populate this chart.</p></div></div>
@@ -969,6 +1026,8 @@ function App() {
           qudoraConnection={qudoraConnection}
           isCheckingQudoraConnection={isCheckingQudoraConnection}
           onCheckQudoraConnection={() => { void checkQudoraConnection() }}
+          onClearAppData={() => { void clearAppData() }}
+          isClearingAppData={isClearingAppData}
           onSave={handleSaveSettings}
           onClose={() => setSettingsOpen(false)}
         />

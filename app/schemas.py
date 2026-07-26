@@ -107,6 +107,13 @@ class OptimizeResponse(BaseModel):
     message: str
 
 
+class AppDataResetResponse(BaseModel):
+    """Audit-friendly acknowledgement for the destructive demo-data reset."""
+
+    deleted_runs: int
+    message: str
+
+
 class BenchmarkResultSchema(BaseModel):
     algorithm: str
     tour: List[int]

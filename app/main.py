@@ -14,7 +14,7 @@ import uuid
 import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, BackgroundTasks, Depends, HTTPException, status
+from fastapi import FastAPI, BackgroundTasks, Depends, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
@@ -386,6 +386,7 @@ def inspect_runtime(db: Session = Depends(get_db)):
             "POST /api/v1/optimize",
             "GET /api/v1/optimize/latest",
             "GET /api/v1/optimize/{run_id}",
+            "DELETE /api/v1/app-data",
             "GET /docs",
             "GET /static/maps/{file}.html",
         ],
@@ -535,6 +536,44 @@ def get_latest_completed_run(db: Session = Depends(get_db)):
             detail="No completed optimization run has been persisted yet.",
         )
     return get_run_status(run.id, db)
+
+
+@app.delete(
+    "/api/v1/app-data",
+    response_model=schemas.AppDataResetResponse,
+    status_code=status.HTTP_200_OK,
+)
+def clear_persisted_app_data(
+    confirmation: str = Header(default="", alias="X-Confirm-Reset"),
+    db: Session = Depends(get_db),
+):
+    """Permanently delete persisted benchmark runs and their result/job traces.
+
+    The dashboard must opt in with an explicit confirmation header.  Deleting
+    run ORM objects (rather than issuing a bulk SQL delete) preserves the
+    declared result/job cascade on every supported database backend.
+    """
+    if confirmation != "DELETE_ALL_APP_DATA":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Explicit reset confirmation is required.",
+        )
+    try:
+        runs = db.query(models.BenchmarkRun).all()
+        for run in runs:
+            db.delete(run)
+        db.commit()
+    except Exception as error:
+        db.rollback()
+        logger.exception("Failed to clear persisted app data")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not clear persisted app data.",
+        ) from error
+    return schemas.AppDataResetResponse(
+        deleted_runs=len(runs),
+        message="Persisted benchmark runs, results, and quantum job traces were deleted.",
+    )
 
 
 @app.get(
