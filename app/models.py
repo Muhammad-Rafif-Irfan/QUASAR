@@ -25,6 +25,8 @@ class BenchmarkRun(Base):
     # Serialized OR-Tools CVRP routes for a fleet run, indexed against
     # [depot] + submitted stops. Empty/null for single-vehicle TSP runs.
     fleet_routes = Column(Text, nullable=True)
+    # Server-generated QAOA+ / QUDORA evidence for this exact route run.
+    quantum_warm_start = Column(Text, nullable=True)
 
     results = relationship(
         "BenchmarkResult", back_populates="run", cascade="all, delete-orphan")

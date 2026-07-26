@@ -1,0 +1,64 @@
+QUASAR — PRODUCT OVERVIEW
+
+What QUASAR solves
+------------------
+QUASAR is a route-planning and delivery-operations application for last-mile logistics teams. It helps dispatchers assign delivery stops to vehicles, create capacity-aware routes, visualise the plan on real OpenStreetMap geography, and keep an auditable record of each optimization run.
+
+The immediate problem is practical: late deliveries, unnecessary mileage, uneven vehicle loading, and dispatcher decisions that are difficult to explain after the fact. QUASAR turns a list of delivery locations, package demand, and vehicle capacities into a validated route plan with traceable optimization evidence.
+
+How the application works
+-------------------------
+1. A dispatcher selects a local scenario, imports orders, or adds delivery stops on the map.
+2. The dispatcher configures the fleet: vehicle names and capacity limits.
+3. QUASAR sends the request to a FastAPI backend.
+4. The backend builds a distance matrix from road-network data when available. If the road graph is unavailable, it safely records and uses a Haversine great-circle fallback instead of silently mixing distance metrics.
+5. Google OR-Tools solves the production vehicle-routing problem (CVRP) for multi-vehicle delivery, enforcing capacity constraints.
+6. The API stores the input, solver results, distance basis, fleet allocation, and quantum job trace in SQLite.
+7. The React dashboard presents the route plan, individual vehicle routes, operational estimates, benchmark results, and a selectable history of completed runs.
+
+Quantum component and honest scope
+---------------------------------
+QUASAR is a hybrid system, not a claim that a quantum computer already replaces classical fleet routing.
+
+For a small, single-vehicle problem of up to three stops, QUASAR can run a cost-Hamiltonian QAOA path on a local simulator or an IBM Quantum backend when configured. The application records the actual returned job IDs and backend name.
+
+For fleet scenarios, OR-Tools remains the production solver. QUASAR can also evaluate a bounded QAOA+ XY-mixer warm-start experiment on a small neighbourhood around the classical route. This is research evidence and does not replace the fleet allocation. The UI labels that distinction explicitly.
+
+This architecture is intentional: classical optimization scales the operational workflow today, while the pluggable quantum path allows the team to benchmark and adopt improved hardware or algorithms when they are independently validated.
+
+Operational outputs
+-------------------
+- Capacity-feasible vehicle assignments and delivery order.
+- Solver objective and the recorded distance metric.
+- OSRM road-geometry map preview, clearly separated from the solver objective when they differ.
+- Estimated travel time, fuel use, and fuel-only cost. These are assumption-based estimates, not unproven savings claims.
+- Per-vehicle route selection and route highlighting.
+- Benchmark history with original solver rows and quantum job traces for each saved run.
+
+Target customers
+----------------
+- Small and medium logistics operators.
+- Local retailers and e-commerce sellers with their own delivery fleet.
+- Agricultural cooperatives moving products from collection points to a local depot.
+- Municipal, relief, or social-good delivery programs that need transparent routing decisions.
+
+Business model
+--------------
+1. Software-as-a-Service subscription
+   - Starter: one depot, a small fleet, route planning, map view, and run history.
+   - Professional: multiple depots, CSV/API import, operational analytics, team accounts, and higher run limits.
+   - Enterprise: private deployment, SSO, custom integrations, audit retention, and service-level support.
+
+2. Usage-based optimization credits
+   Customers can pay for optimization volume above the subscription allowance, for example by route run, vehicle, or monthly delivery-stop volume.
+
+3. Integration and implementation services
+   Revenue can come from onboarding, connecting order-management systems, fleet telematics, warehouse software, or a customer-specific emissions model.
+
+4. Future quantum-ready research tier
+   Advanced customers or research partners may pay for controlled quantum benchmarking, hardware-job orchestration, result caching, and technical reports. This tier must never promise a quantum speedup without measured evidence.
+
+Why QUASAR is differentiated
+-----------------------------
+QUASAR combines operational usefulness with scientific transparency. It provides a classical production route plan now, preserves the evidence needed to audit it, and exposes quantum experiments without overstating their capability. That makes it suitable for both a realistic logistics demo and a responsible pathway toward quantum-ready optimization.
+

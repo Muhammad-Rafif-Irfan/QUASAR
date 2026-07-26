@@ -68,6 +68,8 @@ async def lifespan(app: FastAPI):
                 connection.execute(text("ALTER TABLE benchmark_runs ADD COLUMN distance_metric VARCHAR"))
             if "fleet_routes" not in columns:
                 connection.execute(text("ALTER TABLE benchmark_runs ADD COLUMN fleet_routes TEXT"))
+            if "quantum_warm_start" not in columns:
+                connection.execute(text("ALTER TABLE benchmark_runs ADD COLUMN quantum_warm_start TEXT"))
     logger.info("Database schema initialized.")
 
     # Ensure static directory exists for Folium maps
@@ -454,6 +456,7 @@ def optimize_route(
         stops=[s.dict() for s in request.stops],
         vehicles=[vehicle.dict() for vehicle in request.vehicles] if request.vehicles else None,
         algorithms=request.algorithms,
+        quantum_mode=request.quantum_mode,
     )
 
     logger.info("Optimization run %s submitted with %d stops.", run_id[:8], len(request.stops))
@@ -674,4 +677,5 @@ def get_run_status(run_id: str, db: Session = Depends(get_db)):
         fleet_routes=json.loads(run.fleet_routes) if run.fleet_routes else [],
         results=results_schema,
         quantum_jobs=jobs_schema,
+        quantum_warm_start=json.loads(run.quantum_warm_start) if run.quantum_warm_start else None,
     )

@@ -362,6 +362,11 @@ function App() {
         { className: 'time-series', label: 'Estimated duration', values: normalizeToPercent(fleetProfile.map((route) => route.duration)) },
         { className: 'cost-series', label: 'Vehicle load', values: fleetProfile.map((route) => route.loadPercent) },
       ]
+  const isConstantSeries = (values: number[]) => values.every((value) => Math.abs(value - values[0]) < 0.001)
+  const displayedChartSeries = isSolverComparison ? chartSeries.filter((series) => !isConstantSeries(series.values)) : chartSeries
+  const solverTieDisclosure = isSolverComparison && displayedChartSeries.length < chartSeries.length
+    ? 'All displayed solvers found the same valid route distance on this small instance. Constant quality/validity lines are intentionally hidden; only metrics that differ are plotted.'
+    : null
   const chartPoints = (values: number[]) => values.map((value, index) => ({
     x: values.length === 1 ? 350 : 38 + (index * 624) / (values.length - 1),
     y: 198 - value / 100 * 154,
@@ -441,6 +446,7 @@ function App() {
           fleet_routes: OptimizedFleetRoute[]
           results: Array<{ algorithm: string; tour: number[]; distance_meters: number; execution_time_ms: number; is_valid: boolean; approximation_ratio?: number | null }>
           quantum_jobs: QuantumJob[]
+          quantum_warm_start?: Record<string, unknown> | null
         }
         if (cancelled) return
         const restoredStops = latest.stops.map((stop, index) => ({ id: `N${index + 1}`, name: stop.name, lat: stop.lat, lon: stop.lon }))
@@ -466,6 +472,10 @@ function App() {
           approximationRatio: row.approximation_ratio ?? null,
         })))
         setQuantumJobs(latest.quantum_jobs)
+        if (latest.quantum_warm_start) {
+          const evidence = latest.quantum_warm_start
+          setQuantumWarmStart({ algorithm: String(evidence.algorithm || 'QAOA+ XY warm-start'), executor: String(evidence.executor || 'qudora'), backend: evidence.backend == null ? null : String(evidence.backend), jobIds: Array.isArray(evidence.job_ids) ? evidence.job_ids.map(String) : [], valid: Boolean(evidence.valid), accepted: Boolean(evidence.accepted), acceptanceReason: evidence.acceptance_reason == null ? null : String(evidence.acceptance_reason), initialCost: Number(evidence.initial_cost || 0), finalCost: Number(evidence.final_cost || 0), improvementPercent: Number(evidence.improvement_percent || 0), feasibleSampleRate: evidence.feasible_sample_rate == null ? null : Number(evidence.feasible_sample_rate), shots: evidence.shots == null ? null : Number(evidence.shots), nQubits: Number(evidence.n_qubits || 0), circuitDepth: evidence.circuit_depth == null ? null : Number(evidence.circuit_depth), error: evidence.error == null ? undefined : String(evidence.error) })
+        } else setQuantumWarmStart(null)
         const restoredSolverLabel = latest.results.some((row) => /qaoa|quantum/i.test(row.algorithm))
           ? 'Restored verified solver comparison'
           : latest.results[0]?.algorithm || 'Restored verified run'
@@ -514,6 +524,7 @@ function App() {
         results: Array<{ algorithm: string; distance_meters: number; execution_time_ms: number; is_valid: boolean; approximation_ratio?: number | null }>
         quantum_jobs: Array<{ job_id: string; algorithm: string; backend_name: string; status: string; qpu_time_seconds?: number | null }>
         fleet_routes?: OptimizedFleetRoute[]
+        quantum_warm_start?: Record<string, unknown> | null
       }
       setComparisonRows(run.results.map((row) => ({
         algorithm: row.algorithm,
@@ -529,7 +540,10 @@ function App() {
         status: job.status,
         qpuTimeSeconds: job.qpu_time_seconds ?? null,
       })))
-      setQuantumWarmStart(null)
+      if (run.quantum_warm_start) {
+        const evidence = run.quantum_warm_start
+        setQuantumWarmStart({ algorithm: String(evidence.algorithm || 'QAOA+ XY warm-start'), executor: String(evidence.executor || 'qudora'), backend: evidence.backend == null ? null : String(evidence.backend), jobIds: Array.isArray(evidence.job_ids) ? evidence.job_ids.map(String) : [], valid: Boolean(evidence.valid), accepted: Boolean(evidence.accepted), acceptanceReason: evidence.acceptance_reason == null ? null : String(evidence.acceptance_reason), initialCost: Number(evidence.initial_cost || 0), finalCost: Number(evidence.final_cost || 0), improvementPercent: Number(evidence.improvement_percent || 0), feasibleSampleRate: evidence.feasible_sample_rate == null ? null : Number(evidence.feasible_sample_rate), shots: evidence.shots == null ? null : Number(evidence.shots), nQubits: Number(evidence.n_qubits || 0), circuitDepth: evidence.circuit_depth == null ? null : Number(evidence.circuit_depth), error: evidence.error == null ? undefined : String(evidence.error) })
+      } else setQuantumWarmStart(null)
       setRunEvidence({
         runId: run.run_id,
         stopsCount: run.stops_count,
@@ -656,6 +670,7 @@ function App() {
         ? vehicles.map((vehicle) => ({ id: vehicle.id, name: vehicle.name, capacity: Number(vehicle.capacity) || 0 }))
         : undefined,
       algorithms: solver.algorithms,
+      quantum_mode: solver.id === 'qaoa_plus_qudora' ? 'qudora_warm_start' : 'none',
     }
 
     try {
@@ -703,6 +718,7 @@ function App() {
           stops_count: number
           distance_metric?: string | null
           fleet_routes?: OptimizedFleetRoute[]
+          quantum_warm_start?: Record<string, unknown> | null
         }
         if (statusBody.status === 'FAILED') {
           throw new Error(statusBody.error_message || 'Optimization failed')
@@ -723,6 +739,23 @@ function App() {
             status: job.status,
             qpuTimeSeconds: job.qpu_time_seconds ?? null,
           })))
+          const persistedWarmStart = statusBody.quantum_warm_start
+          if (persistedWarmStart) {
+            setQuantumWarmStart({
+              algorithm: String(persistedWarmStart.algorithm || 'QAOA+ XY warm-start'),
+              executor: String(persistedWarmStart.executor || 'qudora'),
+              backend: persistedWarmStart.backend == null ? null : String(persistedWarmStart.backend),
+              jobIds: Array.isArray(persistedWarmStart.job_ids) ? persistedWarmStart.job_ids.map(String) : [],
+              valid: Boolean(persistedWarmStart.valid), accepted: Boolean(persistedWarmStart.accepted),
+              acceptanceReason: persistedWarmStart.acceptance_reason == null ? null : String(persistedWarmStart.acceptance_reason),
+              initialCost: Number(persistedWarmStart.initial_cost || 0), finalCost: Number(persistedWarmStart.final_cost || 0),
+              improvementPercent: Number(persistedWarmStart.improvement_percent || 0),
+              feasibleSampleRate: persistedWarmStart.feasible_sample_rate == null ? null : Number(persistedWarmStart.feasible_sample_rate),
+              shots: persistedWarmStart.shots == null ? null : Number(persistedWarmStart.shots), nQubits: Number(persistedWarmStart.n_qubits || 0),
+              circuitDepth: persistedWarmStart.circuit_depth == null ? null : Number(persistedWarmStart.circuit_depth),
+              error: persistedWarmStart.error == null ? undefined : String(persistedWarmStart.error),
+            })
+          }
           setRunEvidence({
             runId,
             stopsCount: statusBody.stops_count,
@@ -749,7 +782,7 @@ function App() {
               distance_meters: mapResult.distance_meters,
             }] : [])
           }
-          if (solver.id === 'qaoa_plus_qudora') {
+          if (false && solver.id === 'qaoa_plus_qudora') {
             try {
               const routeSeed = fleetRoutes.length > 0
                 ? fleetRoutes.map((route) => route.route)
@@ -787,7 +820,7 @@ function App() {
               algorithm: String(result.algorithm || 'QAOA+ XY warm-start'),
               executor: String(result.executor || 'qudora'),
               backend: result.backend == null ? null : String(result.backend),
-              jobIds: Array.isArray(result.job_ids) ? result.job_ids.map(String) : [],
+              jobIds: Array.isArray(result.job_ids) ? (result.job_ids as unknown[]).map(String) : [],
               valid: Boolean(result.valid),
               accepted: Boolean(result.accepted),
               acceptanceReason: result.acceptance_reason == null ? null : String(result.acceptance_reason),
@@ -805,7 +838,7 @@ function App() {
                 algorithm: 'QAOA+ XY warm-start', executor: 'qudora', backend: null, jobIds: [], valid: false,
                 accepted: false, acceptanceReason: null, initialCost: 0, finalCost: 0, improvementPercent: 0,
                 feasibleSampleRate: null, shots: null, nQubits: 0, circuitDepth: null,
-                error: warmStartError instanceof Error ? warmStartError.message : 'QUDORA warm-start unavailable.',
+                error: `QUDORA warm-start unavailable: ${String(warmStartError)}`,
               })
             }
           }
@@ -964,7 +997,7 @@ function App() {
                 <div className="panel-heading">
                   <div>
                     <p className="section-label">Latest route operations</p>
-                    <h2>{isSolverComparison ? 'Solver trade-off profile' : 'Fleet balance profile'}</h2>
+                    <h2>{isSolverComparison ? (solverTieDisclosure ? 'Solver runtime profile' : 'Solver trade-off profile') : 'Fleet balance profile'}</h2>
                   </div>
                 </div>
                 {runEvidence && routePreviewDistances.length > 0 ? (
@@ -975,11 +1008,12 @@ function App() {
                       <div><Fuel size={15} /><span>Estimated fuel</span><strong>{routeOperationsEstimate?.fuelLiters.toFixed(1)} L</strong><small>at 9.0 L / 100 km</small></div>
                       <div><CircleDollarSign size={15} /><span>Fuel-only cost</span><strong>{Math.round(routeOperationsEstimate?.fuelCostVnd || 0).toLocaleString('en-US')} VND · ${(routeOperationsEstimate?.fuelCostUsd || 0).toFixed(2)}</strong><small>at 24,000 VND / L · 25,000 VND / USD</small></div>
                     </div>
+                    {solverTieDisclosure && <p className="chart-disclosure" role="note">{solverTieDisclosure}</p>}
                     <div className="history-chart" role="img" aria-label={isSolverComparison ? 'Normalized solver trade-off chart for the latest verified API run' : 'Normalized fleet balance chart for the latest verified API run'}>
                       <svg viewBox="0 0 700 230" preserveAspectRatio="none" aria-hidden="true">
                         {[44, 82, 120, 158, 198].map((y) => <line x1="24" y1={y} x2="676" y2={y} key={y} />)}
                         <text className="chart-band-label" x="24" y="20">NORMALIZED SCORE</text><text className="chart-score-label" x="8" y="48">100</text><text className="chart-score-label" x="14" y="202">0</text>
-                        {chartSeries.map((series) => { const points = chartPoints(series.values); return <g className={series.className} key={series.className}>
+                        {displayedChartSeries.map((series) => { const points = chartPoints(series.values); return <g className={series.className} key={series.className}>
                           {points.length === 1 && <line x1="76" y1={points[0].y} x2="624" y2={points[0].y} />}
                           <polyline points={points.map((point) => `${point.x},${point.y}`).join(' ')} />
                           {points.map((point, index) => <circle cx={point.x} cy={point.y} r="4" key={`${series.className}-${index}`} />)}
@@ -987,7 +1021,7 @@ function App() {
                       </svg>
                       <div className="chart-labels" style={{ gridTemplateColumns: `repeat(${Math.max(chartLabels.length, 1)}, 1fr)` }}>{chartLabels.map((label) => <span key={label}>{label}</span>)}</div>
                     </div>
-                    <div className="chart-legend">{chartSeries.map((series) => <span key={series.className}><i className={`${series.className}-key`} /> {series.label}</span>)}<span className="chart-method-note">All lines are normalized 0–100; compare each metric’s shape, not its raw units.</span></div>
+                    <div className="chart-legend">{displayedChartSeries.map((series) => <span key={series.className}><i className={`${series.className}-key`} /> {series.label}</span>)}<span className="chart-method-note">All lines are normalized 0–100; compare each metric’s shape, not its raw units.</span></div>
                     <div className="vehicle-route-strip" aria-label="Vehicle route allocation evidence">
                       {truckRoutes.map((route) => <button type="button" key={route.truckId} className={selectedTruckId === route.truckId ? 'is-selected' : ''} onClick={() => { setSelectedTruckId(route.truckId); setCurrentScreen('live') }}>
                         <i style={{ background: route.color }} /><span><strong>{route.truckName}</strong><small>{vehicleSolverLabel}</small></span><b>View route</b>

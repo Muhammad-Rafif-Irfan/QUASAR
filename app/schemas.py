@@ -66,6 +66,7 @@ class OptimizeRequest(BaseModel):
         max_length=len(ALLOWED_ALGORITHMS),
         example=["nearest_neighbor", "or_tools", "qaoa"],
     )
+    quantum_mode: Literal["none", "qudora_warm_start"] = "none"
 
     @field_validator("algorithms")
     @classmethod
@@ -96,6 +97,8 @@ class OptimizeRequest(BaseModel):
                 raise ValueError("a delivery demand exceeds every vehicle capacity")
             if self.algorithms and "qaoa" in self.algorithms:
                 raise ValueError("qaoa is currently verified for single-vehicle TSP only; use OR-Tools CVRP for fleet runs")
+        if self.quantum_mode == "qudora_warm_start" and not self.vehicles:
+            raise ValueError("QUDORA warm-start requires a fleet CVRP route")
         return self
 
     model_config = ConfigDict(extra="forbid")
@@ -164,6 +167,7 @@ class RunStatusResponse(BaseModel):
     fleet_routes: List[FleetRouteSchema] = Field(default_factory=list)
     results: List[BenchmarkResultSchema] = Field(default_factory=list)
     quantum_jobs: List[QuantumJobSchema] = Field(default_factory=list)
+    quantum_warm_start: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

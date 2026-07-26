@@ -1,0 +1,47 @@
+QUASAR — LIKELY JUDGE QUESTIONS AND ANSWERS
+
+1. What problem does QUASAR solve?
+QUASAR helps delivery operators assign stops to vehicles and generate capacity-feasible routes. It reduces manual dispatch work and makes the route decision traceable through stored solver results, distance metrics, and job evidence.
+
+2. Is QUASAR actually using quantum computing?
+Yes, but we state the scope precisely. Standard QAOA is implemented for a bounded single-vehicle TSP of up to three stops. QAOA+ is implemented as a bounded local-improvement experiment around a classical CVRP seed. Production multi-vehicle allocation is solved by OR-Tools today.
+
+3. Why do all three solvers sometimes return the same distance?
+The benchmark instance can be very small. For three stops, Nearest Neighbor may already find the optimum, so OR-Tools and QAOA find the same valid route. We show this as a tie, not as a quantum advantage.
+
+4. Does QUASAR claim a quantum speedup?
+No. Simulator wall-clock time is not a speedup claim. We compare measured route quality, validity, execution evidence, and quantum feasibility metrics only within their valid scope.
+
+5. What is the role of OR-Tools?
+OR-Tools is the production solver for scalable, capacity-constrained multi-vehicle routing. It creates a reliable classical route seed and remains the operational fallback.
+
+6. What is QAOA+ doing in the fleet scenario?
+QAOA+ does not encode the entire fleet VRP. It evaluates a small, bounded neighbourhood of local moves around the OR-Tools route using a constraint-aware XY-mixer. This keeps the quantum experiment auditable and compatible with current NISQ limits.
+
+7. Did you run on real quantum hardware?
+We distinguish every backend explicitly. A record labelled "Local Statevector Simulator" is local simulation. A QUDORA record labelled Qamelion or QVLS-Q1 is a cloud emulator job. A claim of physical QPU execution requires a real IBM backend name and a real hardware job ID.
+
+8. How can a judge verify a claimed quantum run?
+The application stores the run ID, backend name, job ID, execution status, and QPU time when supplied. The Benchmark screen and persisted run history expose that evidence.
+
+9. Why use QUDORA?
+QUDORA provides an isolated cloud adapter for OpenQASM 2 circuit submission. It lets us execute the bounded QAOA+ experiment without mixing its SDK dependencies with the IBM Runtime environment.
+
+10. What happens if the quantum provider is unavailable?
+The operational OR-Tools route remains valid. QUASAR persists a disclosed quantum-evidence error instead of fabricating a result, so delivery operations are not blocked by a cloud queue or connection failure.
+
+11. Are the fuel, cost, and time values measured savings?
+No. They are explicitly labelled operational estimates based on stated assumptions: map-preview distance, 24 km/h, five minutes per stop, 9 L/100 km, and a fuel-price assumption. A savings claim requires a documented baseline.
+
+12. Why can map distance differ from solver distance?
+The optimizer records the distance matrix used for ranking. The map separately requests road geometry for display. When OSM road-graph retrieval fails safely, the solver uses a labelled Haversine fallback; the UI does not silently mix the two metrics.
+
+13. What makes this production-oriented rather than only a research demo?
+The system uses asynchronous background execution, request tracing, rate limiting, security headers, validated inputs, a durable SQLite run history, and an explicit classical fallback. The quantum path is pluggable rather than a single point of failure.
+
+14. What is your business model?
+The core model is SaaS: a subscription by fleet size or delivery-stop volume, usage credits for optimization runs, paid integrations with order-management or telematics systems, and an optional research tier for audited quantum benchmarking.
+
+15. What is the next technical milestone?
+Persist QUDORA/IBM job evidence for every provider run, collect repeated seeded benchmarks, compare QAOA+ feasibility against standard QAOA, and validate the bounded experiment on a physical QPU only when hardware job IDs and noise-aware results are available.
+

@@ -11,6 +11,7 @@ from app.database import SessionLocal
 from app.models import BenchmarkRun, QuantumJob, BenchmarkResult
 from app.schemas import MAX_OPTIMIZATION_STOPS, MAX_QAOA_STOPS
 from app.services.routing import calculate_distance_matrix, render_map
+from app.services.quantum_hybrid.warm_start import run_quasar_qaoa_xy_hybrid
 
 from core.small_tsp_qaoa import (
     best_feasible_sample,
@@ -344,6 +345,7 @@ def run_optimization_pipeline(
     stops: list[dict],
     vehicles: list[dict] | None = None,
     algorithms: list[str] | None = None,
+    quantum_mode: str = "none",
 ):
     """
     Asynchronous worker that runs the selected classical and/or quantum solvers.
@@ -399,6 +401,46 @@ def run_optimization_pipeline(
                 execution_time_ms=fleet_time_ms,
             ))
             db.commit()
+            if quantum_mode == "qudora_warm_start":
+                try:
+                    warm_payload = {
+                        "matrix": dist_matrix,
+                        "demands": [0] + [int(stop.get("demand", 1)) for stop in stops],
+                        "capacities": [int(vehicle["capacity"]) for vehicle in vehicles or []],
+                        "starting_nodes": [0 for _ in vehicles or []],
+                        "routes": {str(index): route["route"] for index, route in enumerate(fleet_routes)},
+                        "problem_type": "cvrp",
+                        "executor": "qudora",
+                        "qudora_backend": os.environ.get("QUDORA_BACKEND", "Qamelion"),
+                        "shots": 64,
+                        "maxiter": 8,
+                        "max_candidates": 8,
+                        "neighborhood_size": 8,
+                        "random_seed": 42,
+                    }
+                    warm_result = run_quasar_qaoa_xy_hybrid(warm_payload)
+                    run.quantum_warm_start = json.dumps(warm_result)
+                    for job_id in warm_result.get("job_ids", []):
+                        db.add(QuantumJob(
+                            run_id=run_id,
+                            job_id=str(job_id),
+                            algorithm="QAOA+ XY warm-start",
+                            backend_name=str(warm_result.get("backend") or "QUDORA"),
+                            status="COMPLETED" if not warm_result.get("execution_error") else "FAILED",
+                            qpu_time_seconds=None,
+                        ))
+                    db.commit()
+                except Exception as error:
+                    # The classical operational run remains valid, but the API
+                    # persists a disclosed QUDORA failure rather than hiding it.
+                    run.quantum_warm_start = json.dumps({
+                        "algorithm": "QAOA+ XY warm-start",
+                        "executor": "qudora",
+                        "backend": None,
+                        "job_ids": [],
+                        "error": f"{type(error).__name__}: {error}",
+                    })
+                    db.commit()
         elif "nearest_neighbor" in selected:
             nn_tour, nn_dist, nn_time_ms = solve_nearest_neighbor(dist_matrix)
             is_val, val_err = validate_tour(nn_tour, n)
